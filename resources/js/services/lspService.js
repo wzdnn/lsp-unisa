@@ -43,6 +43,11 @@ export const apl01PengajuanService = {
     review: (id, data) => api.patch(`/apl01-pengajuan/${id}/review`, data),
 };
 
+export const signatureService = {
+    getCurrent: () => api.get("/signature/current"),
+    save: (data) => api.post("/signature", data),
+};
+
 export const userService = {
     getAll: (params) => api.get("/users", { params }),
     getDosenInternal: () => api.get("/users/dosen-internal"),

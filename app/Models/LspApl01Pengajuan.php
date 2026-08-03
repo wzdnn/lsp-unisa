@@ -43,4 +43,10 @@ class LspApl01Pengajuan extends Model
         return $this->hasMany(LspApl01Dokumen::class, 'kdlsp_apl01_pengajuan', 'kdlsp_apl01_pengajuan');
     }
 
+    public function documentSignatures()
+    {
+        return $this->hasMany(LspDocumentSignature::class, 'document_id', 'kdlsp_apl01_pengajuan')
+            ->where('document_type', 'apl01_pengajuan');
+    }
+
 }

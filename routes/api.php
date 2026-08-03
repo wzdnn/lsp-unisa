@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\LspPeriodeMasaController;
 use App\Http\Controllers\Api\LspPeriodeSkemaController;
 use App\Http\Controllers\Api\LspSkemaController;
 use App\Http\Controllers\Api\LspSkemaUnitKompetensiController;
+use App\Http\Controllers\Api\LspSignatureController;
 use App\Http\Controllers\Api\LspUserController;
 use Illuminate\Support\Facades\Route;
 
@@ -59,6 +60,9 @@ Route::middleware(['web', 'auth.session'])->group(function () {
     Route::apiResource('apl01-pengajuan', LspApl01PengajuanController::class)
          ->only(['index', 'store', 'show'])
          ->parameters(['apl01-pengajuan' => 'kdlsp_apl01_pengajuan']);
+
+    Route::get('signature/current', [LspSignatureController::class, 'current']);
+    Route::post('signature', [LspSignatureController::class, 'store']);
 
     Route::get('/apl01-pengajuan/{id}/dokumen', [LspApl01DokumenController::class, 'index']);
     Route::post('/apl01-pengajuan/{id}/dokumen', [LspApl01DokumenController::class, 'store']);

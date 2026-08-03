@@ -5,6 +5,7 @@ import api from "../services/api";
 import Login from "../views/Login.vue";
 import AdminPage from "../views/Admin/AdminPage.vue";
 import AdminManagementPage from "../views/Admin/AdminManagementPage.vue";
+import AdminAssesmentPage from "../views/Admin/AdminAssesmentPage.vue";
 import UserPage from "../views/Admin/UserPage.vue";
 import DosenPage from "../views/Dosen/DosenPage.vue";
 import MahasiswaPage from "../views/Mahasiswa/MahasiswaPage.vue";
@@ -25,6 +26,15 @@ const routes = [
     {
         path: "/admin/manajemen",
         component: AdminManagementPage,
+        meta: { role: ["admin", "superadmin", "tendik"] },
+    },
+    {
+        path: "/admin/assesment",
+        redirect: "/admin/assesment/pendaftaran",
+    },
+    {
+        path: "/admin/assesment/:stage",
+        component: AdminAssesmentPage,
         meta: { role: ["admin", "superadmin", "tendik"] },
     },
     {

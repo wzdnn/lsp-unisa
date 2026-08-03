@@ -34,6 +34,30 @@ const navItems = computed(() => {
             to: "/admin/manajemen",
         },
         {
+            label: "Assesment",
+            icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+            to: "/admin/assesment/pendaftaran",
+            activePaths: ["/admin/assesment"],
+            children: [
+                {
+                    label: "Pendaftaran",
+                    to: "/admin/assesment/pendaftaran",
+                },
+                {
+                    label: "Pre-Assesment",
+                    to: "/admin/assesment/pre-assesment",
+                },
+                {
+                    label: "Assesment",
+                    to: "/admin/assesment/assesment",
+                },
+                {
+                    label: "Post-Assesment",
+                    to: "/admin/assesment/post-assesment",
+                },
+            ],
+        },
+        {
             label: "User & Asesor",
             icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
             to: "/admin/user",
@@ -54,7 +78,20 @@ const logout = async () => {
 
 const isActive = (item) =>
     route.path === item.to ||
-    item.activePaths?.some((path) => route.path.startsWith(path));
+    item.activePaths?.some(
+        (path) => route.path === path || route.path.startsWith(`${path}/`),
+    ) ||
+    item.children?.some((child) => isActive(child));
+
+const activeNavLabel = computed(() => {
+    for (const item of navItems.value) {
+        const activeChild = item.children?.find((child) => isActive(child));
+        if (activeChild) return activeChild.label;
+        if (isActive(item)) return item.label;
+    }
+
+    return "Dashboard";
+});
 </script>
 
 <template>
@@ -98,54 +135,87 @@ const isActive = (item) =>
 
             <!-- Nav Items -->
             <nav class="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
-                <router-link
+                <div
                     v-for="item in navItems"
                     :key="item.to"
-                    :to="item.to"
-                    :title="collapsed ? item.label : ''"
-                    :class="[
-                        isActive(item)
-                            ? 'bg-[#4a7c6b] text-white'
-                            : 'text-[#a8c5b8] hover:bg-[#2d4a3e] hover:text-white',
-                        collapsed ? 'justify-center px-0' : 'px-3',
-                    ]"
-                    class="flex items-center gap-3 h-10 rounded-lg transition-all duration-150 group relative"
+                    class="space-y-0.5"
                 >
-                    <svg
-                        class="w-4.5 h-4.5 shrink-0"
-                        style="width: 18px; height: 18px"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <router-link
+                        :to="item.to"
+                        :title="collapsed ? item.label : ''"
+                        :class="[
+                            isActive(item)
+                                ? 'bg-[#4a7c6b] text-white'
+                                : 'text-[#a8c5b8] hover:bg-[#2d4a3e] hover:text-white',
+                            collapsed ? 'justify-center px-0' : 'px-3',
+                        ]"
+                        class="flex items-center gap-3 h-10 rounded-lg transition-all duration-150 group relative"
                     >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="1.5"
-                            :d="item.icon"
-                        />
-                    </svg>
-                    <span
-                        :class="collapsed ? 'opacity-0 w-0' : 'opacity-100'"
-                        class="text-sm whitespace-nowrap overflow-hidden transition-all duration-300"
-                    >
-                        {{ item.label }}
-                    </span>
+                        <svg
+                            class="w-4.5 h-4.5 shrink-0"
+                            style="width: 18px; height: 18px"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="1.5"
+                                :d="item.icon"
+                            />
+                        </svg>
+                        <span
+                            :class="
+                                collapsed ? 'opacity-0 w-0' : 'opacity-100'
+                            "
+                            class="text-sm whitespace-nowrap overflow-hidden transition-all duration-300"
+                        >
+                            {{ item.label }}
+                        </span>
 
-                    <!-- Active indicator -->
-                    <div
-                        v-if="isActive(item) && !collapsed"
-                        class="absolute right-2 w-1.5 h-1.5 rounded-full bg-[#a8d5c2]"
-                    ></div>
+                        <!-- Active indicator -->
+                        <div
+                            v-if="isActive(item) && !collapsed"
+                            class="absolute right-2 w-1.5 h-1.5 rounded-full bg-[#a8d5c2]"
+                        ></div>
 
-                    <!-- Tooltip -->
+                        <!-- Tooltip -->
+                        <div
+                            v-if="collapsed"
+                            class="absolute left-full ml-3 px-2.5 py-1.5 bg-[#1e3329] border border-[#2d4a3e] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50"
+                        >
+                            {{ item.label }}
+                        </div>
+                    </router-link>
+
                     <div
-                        v-if="collapsed"
-                        class="absolute left-full ml-3 px-2.5 py-1.5 bg-[#1e3329] border border-[#2d4a3e] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50"
+                        v-if="item.children?.length && !collapsed"
+                        class="ml-5 pl-3 border-l border-[#2d4a3e] space-y-0.5"
                     >
-                        {{ item.label }}
+                        <router-link
+                            v-for="child in item.children"
+                            :key="child.to"
+                            :to="child.to"
+                            :class="
+                                isActive(child)
+                                    ? 'text-white bg-[#365f51]'
+                                    : 'text-[#8fb2a4] hover:bg-[#2d4a3e] hover:text-white'
+                            "
+                            class="flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-medium transition-all"
+                        >
+                            <span
+                                :class="
+                                    isActive(child)
+                                        ? 'bg-[#a8d5c2]'
+                                        : 'bg-[#4a7c6b]'
+                                "
+                                class="w-1.5 h-1.5 rounded-full shrink-0"
+                            ></span>
+                            <span class="truncate">{{ child.label }}</span>
+                        </router-link>
                     </div>
-                </router-link>
+                </div>
             </nav>
 
             <!-- User & Logout -->
@@ -248,10 +318,7 @@ const isActive = (item) =>
                     <h1
                         class="text-sm font-semibold text-[#1e3329] leading-tight"
                     >
-                        {{
-                            navItems.find((n) => isActive(n))?.label ||
-                            "Dashboard"
-                        }}
+                        {{ activeNavLabel }}
                     </h1>
                 </div>
 

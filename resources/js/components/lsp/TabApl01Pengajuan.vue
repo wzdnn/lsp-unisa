@@ -119,6 +119,23 @@ const persyaratanAdminKeys = ["ktp", "ktm"];
 const getDokumenByJenis = (jenis) =>
     selected.value?.dokumen?.find((d) => d.jenis_dokumen === jenis) || null;
 
+// ── tanda tangan pemohon ──────────────────────────────────────────────
+const applicantSignature = computed(() => {
+    const signatures = selected.value?.document_signatures || [];
+    return (
+        signatures.find(
+            (s) =>
+                s.signature_purpose === "submit_pengajuan_asesi" &&
+                s.status === "signed",
+        ) || null
+    );
+});
+
+const getSignatureUrl = (signature) =>
+    signature?.signature_file_path
+        ? `/storage/${signature.signature_file_path}`
+        : null;
+
 const getPersonName = (item) => {
     const person = item.user?.person;
 
@@ -934,6 +951,61 @@ onMounted(fetch);
                                 >
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Tanda Tangan Pemohon -->
+                <div class="border border-[#dde8e3] rounded-xl overflow-hidden">
+                    <div class="bg-[#f0f4f1] px-4 py-3">
+                        <h4 class="text-xs font-bold text-[#2d4a3e] uppercase">
+                            Tanda Tangan Pemohon
+                        </h4>
+                    </div>
+                    <div class="p-4">
+                        <div
+                            v-if="applicantSignature"
+                            class="flex flex-col sm:flex-row gap-4"
+                        >
+                            <div
+                                class="w-48 h-28 shrink-0 rounded-lg border border-[#e6efeb] bg-white flex items-center justify-center overflow-hidden"
+                            >
+                                <img
+                                    :src="getSignatureUrl(applicantSignature)"
+                                    alt="Tanda tangan pemohon"
+                                    class="max-h-24 max-w-full object-contain"
+                                />
+                            </div>
+                            <div class="text-xs space-y-1.5 text-[#3d6355]">
+                                <p>
+                                    <span class="font-semibold"
+                                        >Ditandatangani:</span
+                                    >
+                                    {{
+                                        formatDateTime(
+                                            applicantSignature.signed_at,
+                                        )
+                                    }}
+                                </p>
+                                <p>
+                                    <span class="font-semibold">Oleh:</span>
+                                    {{ getPersonName(selected) }}
+                                    ({{ applicantSignature.signer_role }})
+                                </p>
+                                <p
+                                    class="text-slate-400 italic leading-relaxed"
+                                >
+                                    {{ applicantSignature.consent_text }}
+                                </p>
+                                <span
+                                    class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-[#eaf2ee] text-[#2d4a3e] font-semibold"
+                                >
+                                    ✓ Terverifikasi
+                                </span>
+                            </div>
+                        </div>
+                        <p v-else class="text-xs text-slate-400 italic">
+                            Mahasiswa belum menandatangani pengajuan ini.
+                        </p>
                     </div>
                 </div>
 

@@ -6,6 +6,7 @@ import {
     apl01DokumenService,
     apl01PengajuanService,
     plottingService,
+    signatureService,
     unitKompetensiService,
 } from "../../services/lspService";
 import { useAuthStore } from "../../stores/auth";
@@ -23,6 +24,14 @@ const pengajuan = ref(null);
 const unitList = ref([]);
 const dokumenList = ref([]);
 const uploadingKey = ref(null);
+const activeSignature = ref(null);
+const signatureCanvas = ref(null);
+const signatureDrawing = ref(false);
+const signatureHasStroke = ref(false);
+const savingSignature = ref(false);
+const signatureConsentAccepted = ref(false);
+const signatureConsentText =
+    "Saya menyatakan tanda tangan elektronik ini milik saya dan dapat digunakan untuk proses permohonan sertifikasi kompetensi FR.APL.01.";
 const fileInputRefs = {};
 const triggerUpload = (jenisDokumen) => {
     fileInputRefs[jenisDokumen]?.click();
@@ -309,6 +318,20 @@ const pengajuanId = computed(
     () => pengajuan.value?.kdlsp_apl01_pengajuan || null,
 );
 
+const hasActiveSignature = computed(
+    () => !!activeSignature.value?.kdlsp_user_signature,
+);
+
+const activeSignatureUrl = computed(() => {
+    const signature = activeSignature.value;
+    if (!signature) return null;
+
+    return (
+        signature.file_url ||
+        getFileUrl(signature.file_path || signature.file_type)
+    );
+});
+
 const statusLabel = computed(() => {
     const labels = {
         draft: "Draft",
@@ -339,6 +362,10 @@ const canEdit = computed(
         !["menunggu_review", "diterima", "ditolak"].includes(
             pengajuanStatus.value,
         ),
+);
+
+const canSubmit = computed(
+    () => canEdit.value && hasActiveSignature.value && !saving.value,
 );
 
 const masaName = computed(() => {
@@ -442,6 +469,15 @@ const fetchUnits = async () => {
     }
 };
 
+const fetchActiveSignature = async () => {
+    try {
+        const res = await signatureService.getCurrent();
+        activeSignature.value = res.data || null;
+    } catch {
+        activeSignature.value = null;
+    }
+};
+
 const fetchDetail = async () => {
     loading.value = true;
     error.value = "";
@@ -452,6 +488,7 @@ const fetchDetail = async () => {
         applySkemaDefaults();
         await fetchPengajuan();
         await fetchUnits();
+        await fetchActiveSignature();
     } catch (err) {
         error.value =
             err.response?.data?.message || "Gagal memuat detail skema";
@@ -520,6 +557,100 @@ const handleDeleteDokumen = async (jenisDokumen) => {
 
 // ── save / submit ─────────────────────────────────────────────────────────────
 
+const signatureContext = () => {
+    const ctx = signatureCanvas.value?.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1e3329";
+
+    return ctx;
+};
+
+const signaturePoint = (event) => {
+    const canvas = signatureCanvas.value;
+    const source = event.touches?.[0] || event;
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+        x: (source.clientX - rect.left) * (canvas.width / rect.width),
+        y: (source.clientY - rect.top) * (canvas.height / rect.height),
+    };
+};
+
+const startSignatureDraw = (event) => {
+    if (!canEdit.value || savingSignature.value) return;
+    if (event.cancelable) event.preventDefault();
+
+    const ctx = signatureContext();
+    if (!ctx) return;
+
+    const point = signaturePoint(event);
+    signatureDrawing.value = true;
+    signatureHasStroke.value = true;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+};
+
+const drawSignature = (event) => {
+    if (!signatureDrawing.value) return;
+    if (event.cancelable) event.preventDefault();
+
+    const ctx = signatureContext();
+    if (!ctx) return;
+
+    const point = signaturePoint(event);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+};
+
+const stopSignatureDraw = () => {
+    signatureDrawing.value = false;
+};
+
+const clearSignatureCanvas = () => {
+    const canvas = signatureCanvas.value;
+    const ctx = signatureContext();
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    signatureHasStroke.value = false;
+};
+
+const saveSignature = async () => {
+    if (!signatureHasStroke.value) {
+        error.value = "Silakan gambar tanda tangan terlebih dahulu.";
+        return;
+    }
+
+    if (!signatureConsentAccepted.value) {
+        error.value = "Centang persetujuan tanda tangan terlebih dahulu.";
+        return;
+    }
+
+    savingSignature.value = true;
+    error.value = "";
+
+    try {
+        const res = await signatureService.save({
+            signature: signatureCanvas.value.toDataURL("image/png"),
+            consent_text: signatureConsentText,
+        });
+
+        activeSignature.value = res.data;
+        signatureConsentAccepted.value = false;
+        clearSignatureCanvas();
+        notice.value = "Tanda tangan berhasil disimpan.";
+    } catch (err) {
+        error.value =
+            err.response?.data?.message || "Gagal menyimpan tanda tangan.";
+    } finally {
+        savingSignature.value = false;
+    }
+};
+
 const makePayload = (submit = false) => ({
     kdlsp_periode_skema: route.params.id,
     data_pribadi: form.value.data_pribadi,
@@ -547,6 +678,12 @@ const saveDraft = async () => {
 };
 
 const markReady = async () => {
+    if (!hasActiveSignature.value) {
+        error.value =
+            "Simpan tanda tangan pemohon terlebih dahulu sebelum menandai siap.";
+        return;
+    }
+
     saving.value = true;
     error.value = "";
     try {
@@ -1349,6 +1486,128 @@ onMounted(fetchDetail);
                     </div>
                 </section>
 
+                <section
+                    class="bg-white border border-[#dde8e3] rounded-xl p-5 shadow-sm"
+                >
+                    <div class="mb-5">
+                        <p
+                            class="text-xs font-semibold text-[#7aab95] uppercase tracking-wider"
+                        >
+                            Tanda Tangan
+                        </p>
+                        <h3 class="text-base font-bold text-[#1e3329] mt-1">
+                            Tanda Tangan Pemohon
+                        </h3>
+                        <p class="text-sm text-[#7aab95] mt-1">
+                            Tanda tangan ini wajib disimpan sebelum FR.APL.01
+                            dikirim untuk review.
+                        </p>
+                    </div>
+
+                    <div class="grid gap-5 lg:grid-cols-[280px_1fr]">
+                        <div
+                            class="rounded-lg border border-[#dde8e3] bg-[#f9fbfa] p-4"
+                        >
+                            <p
+                                class="text-xs font-semibold text-[#3d6355] uppercase tracking-wider"
+                            >
+                                Tersimpan
+                            </p>
+                            <div
+                                class="mt-3 flex h-32 items-center justify-center rounded-lg bg-white border border-[#e6efeb] overflow-hidden"
+                            >
+                                <img
+                                    v-if="activeSignatureUrl"
+                                    :src="activeSignatureUrl"
+                                    alt="Tanda tangan pemohon"
+                                    class="max-h-24 max-w-full object-contain"
+                                />
+                                <span v-else class="text-sm text-slate-400">
+                                    Belum ada tanda tangan
+                                </span>
+                            </div>
+                            <p
+                                v-if="hasActiveSignature"
+                                class="mt-3 text-xs font-semibold text-[#2d4a3e]"
+                            >
+                                Tanda tangan aktif siap digunakan.
+                            </p>
+                            <p v-else class="mt-3 text-xs text-amber-700">
+                                Tombol Tandai Siap akan aktif setelah tanda
+                                tangan disimpan.
+                            </p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div
+                                class="rounded-lg border border-[#c8ddd6] bg-white p-3"
+                            >
+                                <canvas
+                                    ref="signatureCanvas"
+                                    width="720"
+                                    height="180"
+                                    class="block h-40 w-full rounded-md bg-white touch-none cursor-crosshair"
+                                    :class="{
+                                        'opacity-60 cursor-not-allowed':
+                                            !canEdit,
+                                    }"
+                                    @mousedown="startSignatureDraw"
+                                    @mousemove="drawSignature"
+                                    @mouseup="stopSignatureDraw"
+                                    @mouseleave="stopSignatureDraw"
+                                    @touchstart.prevent="startSignatureDraw"
+                                    @touchmove.prevent="drawSignature"
+                                    @touchend="stopSignatureDraw"
+                                ></canvas>
+                            </div>
+
+                            <label
+                                class="flex items-start gap-2 text-xs text-[#3d6355]"
+                            >
+                                <input
+                                    v-model="signatureConsentAccepted"
+                                    type="checkbox"
+                                    :disabled="!canEdit || savingSignature"
+                                    class="mt-0.5 rounded border-[#c8ddd6] text-[#2d4a3e]"
+                                />
+                                <span>{{ signatureConsentText }}</span>
+                            </label>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    @click="clearSignatureCanvas"
+                                    :disabled="
+                                        !signatureHasStroke ||
+                                        savingSignature ||
+                                        !canEdit
+                                    "
+                                    class="border border-[#c8ddd6] bg-white hover:bg-[#f7faf8] disabled:opacity-50 text-slate-600 text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+                                >
+                                    Hapus Coretan
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="saveSignature"
+                                    :disabled="
+                                        !signatureHasStroke ||
+                                        !signatureConsentAccepted ||
+                                        savingSignature ||
+                                        !canEdit
+                                    "
+                                    class="bg-[#2d4a3e] hover:bg-[#3d6355] disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+                                >
+                                    {{
+                                        savingSignature
+                                            ? "Menyimpan..."
+                                            : "Simpan Tanda Tangan"
+                                    }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- action buttons -->
                 <div class="flex flex-wrap justify-end gap-2 pb-6">
                     <button
@@ -1369,11 +1628,18 @@ onMounted(fetchDetail);
                     <button
                         type="button"
                         @click="markReady"
-                        :disabled="saving || !canEdit"
+                        :disabled="!canSubmit"
                         class="bg-[#2d4a3e] hover:bg-[#3d6355] disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all"
                     >
                         {{ saving ? "Mengirim..." : "Tandai Siap" }}
                     </button>
+                    <p
+                        v-if="canEdit && !hasActiveSignature"
+                        class="basis-full text-right text-xs text-amber-700"
+                    >
+                        Tanda tangan pemohon wajib disimpan sebelum pengajuan
+                        dikirim.
+                    </p>
                 </div>
             </form>
         </div>
