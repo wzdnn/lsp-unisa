@@ -41,6 +41,12 @@ export const apl01PengajuanService = {
     getOne: (id) => api.get(`/apl01-pengajuan/${id}`),
     save: (data) => api.post("/apl01-pengajuan", data),
     review: (id, data) => api.patch(`/apl01-pengajuan/${id}/review`, data),
+    mulai: (payload) => api.post("/apl01-pengajuan/mulai", payload),
+};
+
+export const skemaTarifService = {
+    getOne: (kdlsp_skema) => api.get(`/skema-tarif/${kdlsp_skema}`),
+    save: (payload) => api.post("/skema-tarif", payload),
 };
 
 export const signatureService = {

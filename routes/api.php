@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\LspSkemaController;
 use App\Http\Controllers\Api\LspSkemaUnitKompetensiController;
 use App\Http\Controllers\Api\LspSignatureController;
 use App\Http\Controllers\Api\LspUserController;
+use App\Http\Controllers\LspSkemaTarifController;
 use Illuminate\Support\Facades\Route;
 
 // Hapus login/me/logout dari sini — sudah dipindah ke web.php
@@ -60,6 +61,11 @@ Route::middleware(['web', 'auth.session'])->group(function () {
     Route::apiResource('apl01-pengajuan', LspApl01PengajuanController::class)
          ->only(['index', 'store', 'show'])
          ->parameters(['apl01-pengajuan' => 'kdlsp_apl01_pengajuan']);
+
+    Route::post('apl01-pengajuan/mulai', [LspApl01PengajuanController::class, 'mulai']);
+    Route::get('skema-tarif', [LspSkemaTarifController::class, 'index']);
+    Route::get('skema-tarif/{kdlsp_skema}', [LspSkemaTarifController::class, 'show']);
+    Route::post('skema-tarif', [LspSkemaTarifController::class, 'store']);
 
     Route::get('signature/current', [LspSignatureController::class, 'current']);
     Route::post('signature', [LspSignatureController::class, 'store']);

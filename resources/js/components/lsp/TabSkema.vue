@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
-import { skemaService } from "../../services/lspService";
 import BaseModal from "../BaseModal.vue";
+import { skemaService, skemaTarifService } from "../../services/lspService";
 
 const emit = defineEmits(["toast"]);
 
@@ -13,7 +13,7 @@ const saving = ref(false);
 const toggling = ref(null);
 const error = ref("");
 const editId = ref(null);
-const form = ref({ skema: "", no_skema: "" });
+const form = ref({ skema: "", no_skema: "", nominal: "" });
 
 const fetch = async () => {
     loading.value = true;
@@ -28,32 +28,63 @@ const fetch = async () => {
 };
 
 const openCreate = () => {
-    form.value = { skema: "", no_skema: "" };
+    form.value = { skema: "", no_skema: "", nominal: "" };
     isEdit.value = false;
     editId.value = null;
     error.value = "";
     modal.value = true;
 };
 
-const openEdit = (item) => {
-    form.value = { skema: item.skema, no_skema: item.no_skema || "" };
+const openEdit = async (item) => {
+    form.value = {
+        skema: item.skema,
+        no_skema: item.no_skema || "",
+        nominal: "",
+    };
     isEdit.value = true;
     editId.value = item.kdlsp_skema;
     error.value = "";
     modal.value = true;
+
+    try {
+        const res = await skemaTarifService.getOne(item.kdlsp_skema);
+        form.value.nominal = res.data?.nominal ?? "";
+    } catch {
+        form.value.nominal = "";
+    }
 };
 
 const submit = async () => {
     error.value = "";
     saving.value = true;
     try {
+        let kdlsp_skema = editId.value;
+
         if (isEdit.value) {
-            await skemaService.update(editId.value, form.value);
-            emit("toast", { message: "Skema berhasil diperbarui" });
+            await skemaService.update(editId.value, {
+                skema: form.value.skema,
+                no_skema: form.value.no_skema,
+            });
         } else {
-            await skemaService.create(form.value);
-            emit("toast", { message: "Skema berhasil ditambahkan" });
+            const res = await skemaService.create({
+                skema: form.value.skema,
+                no_skema: form.value.no_skema,
+            });
+            kdlsp_skema = res.data.kdlsp_skema;
         }
+
+        if (form.value.nominal !== "" && form.value.nominal !== null) {
+            await skemaTarifService.save({
+                kdlsp_skema,
+                nominal: form.value.nominal,
+            });
+        }
+
+        emit("toast", {
+            message: isEdit.value
+                ? "Skema berhasil diperbarui"
+                : "Skema berhasil ditambahkan",
+        });
         modal.value = false;
         fetch();
     } catch (err) {
@@ -169,6 +200,11 @@ onMounted(fetch);
                         <th
                             class="text-left px-5 py-3 text-xs font-semibold text-[#3d6355] uppercase tracking-wider"
                         >
+                            Nominal Tagihan
+                        </th>
+                        <th
+                            class="text-left px-5 py-3 text-xs font-semibold text-[#3d6355] uppercase tracking-wider"
+                        >
                             Status
                         </th>
                         <th
@@ -181,7 +217,7 @@ onMounted(fetch);
                 <tbody>
                     <tr v-if="list.length === 0">
                         <td
-                            colspan="5"
+                            colspan="6"
                             class="text-center py-12 text-[#7aab95] text-sm"
                         >
                             Belum ada skema
@@ -200,6 +236,16 @@ onMounted(fetch);
                         </td>
                         <td class="px-5 py-3.5 font-medium text-[#1e3329]">
                             {{ item.no_skema }}
+                        </td>
+                        <td class="px-5 py-3.5 text-[#1e3329]">
+                            {{
+                                item.tarif?.nominal != null
+                                    ? "Rp " +
+                                      Number(item.tarif.nominal).toLocaleString(
+                                          "id-ID",
+                                      )
+                                    : "-"
+                            }}
                         </td>
                         <td class="px-5 py-3.5">
                             <button
@@ -323,6 +369,22 @@ onMounted(fetch);
                         class="w-full border border-[#c8ddd6] rounded-xl px-4 py-2.5 text-sm text-[#1e3329] placeholder-slate-400 focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 transition-all"
                         @keyup.enter="submit"
                     />
+                </div>
+                <div>
+                    <label
+                        class="text-xs font-semibold text-[#3d6355] uppercase tracking-wider block mb-1.5"
+                        >Nominal Tagihan (Rp)</label
+                    >
+                    <input
+                        v-model.number="form.nominal"
+                        type="number"
+                        min="0"
+                        placeholder="cth: 150000"
+                        class="w-full border border-[#c8ddd6] rounded-xl px-4 py-2.5 text-sm text-[#1e3329] placeholder-slate-400 focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 transition-all"
+                    />
+                    <p class="text-xs text-[#7aab95] mt-1">
+                        Kosongkan jika skema ini belum dikenai biaya
+                    </p>
                 </div>
                 <div
                     v-if="error"

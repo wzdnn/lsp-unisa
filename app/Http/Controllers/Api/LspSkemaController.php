@@ -10,8 +10,8 @@ class LspSkemaController extends Controller
 {
     public function index()
     {
-        $skema = LspSkema::orderBy('skema', 'asc')->get();
-        return response()->json($skema);
+        $skema = LspSkema::with('tarif')->orderBy('skema', 'asc')->get();
+    return response()->json($skema);
     }
 
     public function store(Request $request)
@@ -34,7 +34,7 @@ class LspSkemaController extends Controller
 
     public function show($kdlsp_skema)
     {
-        $skema = LspSkema::with('periodeSkema.periode', 'periodeSkema.masaPeriode')
+        $skema = LspSkema::with('periodeSkema.periode', 'periodeSkema.masaPeriode', 'tarif')
             ->findOrFail($kdlsp_skema);
 
         return response()->json($skema);

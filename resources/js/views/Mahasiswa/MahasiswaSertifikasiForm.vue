@@ -7,6 +7,7 @@ import {
     apl01PengajuanService,
     plottingService,
     signatureService,
+    skemaTarifService,
     unitKompetensiService,
 } from "../../services/lspService";
 import { useAuthStore } from "../../stores/auth";
@@ -23,6 +24,8 @@ const plotting = ref(null);
 const pengajuan = ref(null);
 const unitList = ref([]);
 const dokumenList = ref([]);
+const sudahBayar = ref(false);
+const nominalTagihan = ref(null);
 const uploadingKey = ref(null);
 const activeSignature = ref(null);
 const signatureCanvas = ref(null);
@@ -35,6 +38,14 @@ const signatureConsentText =
 const fileInputRefs = {};
 const triggerUpload = (jenisDokumen) => {
     fileInputRefs[jenisDokumen]?.click();
+};
+
+const checkingBayar = ref(false);
+
+const cekStatusBayar = async () => {
+    checkingBayar.value = true;
+    await fetchPengajuan();
+    checkingBayar.value = false;
 };
 
 const assessmentOptions = [
@@ -435,23 +446,39 @@ const syncDokumen = (raw) => {
 
 const fetchPengajuan = async () => {
     try {
-        const res = await apl01PengajuanService.getCurrent({
+        const res = await apl01PengajuanService.mulai({
             kdlsp_periode_skema: route.params.id,
         });
 
-        if (!res.data) return;
-
         pengajuan.value = res.data;
+        sudahBayar.value = !!res.data.sudah_bayar;
         syncDokumen(res.data.dokumen);
-        form.value = mergeForm({
-            data_pribadi: res.data.data_pribadi,
-            data_pekerjaan: res.data.data_pekerjaan,
-            data_sertifikasi: res.data.data_sertifikasi,
-        });
-        localStorage.removeItem(storageKey.value);
-        applySkemaDefaults();
-    } catch {
+
+        if (sudahBayar.value) {
+            form.value = mergeForm({
+                data_pribadi: res.data.data_pribadi,
+                data_pekerjaan: res.data.data_pekerjaan,
+                data_sertifikasi: res.data.data_sertifikasi,
+            });
+            localStorage.removeItem(storageKey.value);
+            applySkemaDefaults();
+        }
+    } catch (err) {
+        error.value =
+            err.response?.data?.message || "Gagal memuat data pengajuan";
         pengajuan.value = null;
+    }
+};
+
+const fetchNominal = async () => {
+    const skemaId =
+        plotting.value?.kdlsp_skema || plotting.value?.skema?.kdlsp_skema;
+    if (!skemaId) return;
+    try {
+        const res = await skemaTarifService.getOne(skemaId);
+        nominalTagihan.value = res.data?.nominal ?? null;
+    } catch {
+        nominalTagihan.value = null;
     }
 };
 
@@ -486,6 +513,7 @@ const fetchDetail = async () => {
         plotting.value = res.data;
         loadDraft();
         applySkemaDefaults();
+        await fetchNominal();
         await fetchPengajuan();
         await fetchUnits();
         await fetchActiveSignature();
@@ -819,6 +847,40 @@ onMounted(fetchDetail);
                 class="bg-red-50 border border-red-200 text-red-600 rounded-xl px-5 py-4 text-sm"
             >
                 {{ error }}
+            </div>
+
+            <!-- gate pembayaran -->
+            <div
+                v-else-if="!sudahBayar"
+                class="bg-white border border-[#dde8e3] rounded-xl p-10 text-center shadow-sm space-y-3"
+            >
+                <p class="text-sm font-semibold text-[#1e3329]">
+                    Pembayaran diperlukan sebelum mengisi FR.APL.01
+                </p>
+                <p class="text-sm text-[#7aab95]">
+                    Nominal tagihan:
+                    <span class="font-bold text-[#2d4a3e]">
+                        {{
+                            nominalTagihan != null
+                                ? "Rp " + nominalTagihan.toLocaleString("id-ID")
+                                : "-"
+                        }}
+                    </span>
+                </p>
+                <p class="text-xs text-[#7aab95] max-w-md mx-auto">
+                    Silakan lakukan pembayaran melalui sistem pembayaran kampus.
+                    Status akan diperbarui otomatis setelah pembayaran diterima.
+                </p>
+                <button
+                    type="button"
+                    @click="cekStatusBayar"
+                    :disabled="checkingBayar"
+                    class="bg-[#2d4a3e] hover:bg-[#3d6355] disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all"
+                >
+                    {{
+                        checkingBayar ? "Mengecek..." : "Cek Status Pembayaran"
+                    }}
+                </button>
             </div>
 
             <!-- form -->

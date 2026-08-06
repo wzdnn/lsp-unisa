@@ -8,9 +8,13 @@ use App\Models\LspApl01Pengajuan;
 use App\Models\LspUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Traits\ChecksLspPayment;
 
 class LspApl01DokumenController extends Controller
 {
+
+    use ChecksLspPayment;
+
     public function index($kdlsp_apl01_pengajuan)
     {
         $pengajuan = LspApl01Pengajuan::findOrFail($kdlsp_apl01_pengajuan);
@@ -75,6 +79,9 @@ class LspApl01DokumenController extends Controller
             if ($pengajuan->kdlsp_user !== $user->kdlsp_user) {
                 abort(403, 'Bukan milik Anda');
             }
+            if (!$this->cekPembayaran($pengajuan->kdlsp_apl01_pengajuan)) {
+                abort(422, 'Pembayaran belum diterima');
+            }
         }
     }
 
@@ -101,5 +108,7 @@ class LspApl01DokumenController extends Controller
             abort(403);
         }
     }
+
+
 
 }

@@ -37,4 +37,9 @@ class LspSkema extends Model
     {
         return $this->hasMany(LspPeriodeSkema::class, 'kdlsp_skema', 'kdlsp_skema');
     }
+
+    public function tarif()
+{
+    return $this->hasOne(LspSkemaTarif::class, 'kdlsp_skema', 'kdlsp_skema');
+}
 }
