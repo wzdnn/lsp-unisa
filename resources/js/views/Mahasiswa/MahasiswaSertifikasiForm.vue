@@ -41,6 +41,7 @@ const triggerUpload = (jenisDokumen) => {
 };
 
 const checkingBayar = ref(false);
+const batasPembayaran = ref(null);
 
 const cekStatusBayar = async () => {
     checkingBayar.value = true;
@@ -452,6 +453,7 @@ const fetchPengajuan = async () => {
 
         pengajuan.value = res.data;
         sudahBayar.value = !!res.data.sudah_bayar;
+        batasPembayaran.value = res.data.batas_pembayaran || null;
         syncDokumen(res.data.dokumen);
 
         if (sudahBayar.value) {
@@ -735,6 +737,17 @@ const resetDraft = () => {
     notice.value = "Isian form dikosongkan.";
 };
 
+const formatDateTime = (date) =>
+    date
+        ? new Date(date).toLocaleString("id-ID", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+          })
+        : "-";
+
 onMounted(fetchDetail);
 </script>
 
@@ -871,6 +884,12 @@ onMounted(fetchDetail);
                     Silakan lakukan pembayaran melalui sistem pembayaran kampus.
                     Status akan diperbarui otomatis setelah pembayaran diterima.
                 </p>
+                <p
+                    v-if="batasPembayaran"
+                    class="text-xs text-red-600 font-medium"
+                >
+                    Bayar sebelum {{ formatDateTime(batasPembayaran) }}
+                </p>
                 <button
                     type="button"
                     @click="cekStatusBayar"
@@ -961,12 +980,12 @@ onMounted(fetchDetail);
                                         v-if="field.textarea"
                                         v-model="form.data_pribadi[field.key]"
                                         rows="3"
-                                        class="w-full border border-[#c8ddd6] rounded-lg px-3 py-2 text-sm text-[#1e3329] focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 bg-white transition-all"
+                                        class="w-full max-h-24 overflow-y-auto resize-none border border-[#c8ddd6] rounded-lg px-3 py-2 text-sm text-[#1e3329] focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 bg-white transition-all"
                                     ></textarea>
                                     <select
                                         v-else-if="field.options"
                                         v-model="form.data_pribadi[field.key]"
-                                        class="w-full border border-[#c8ddd6] rounded-lg px-3 py-2 text-sm text-[#1e3329] focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 bg-white transition-all"
+                                        class="w-full max-h-24 overflow-y-auto resize-none border border-[#c8ddd6] rounded-lg px-3 py-2 text-sm text-[#1e3329] focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 bg-white transition-all"
                                     >
                                         <option value="">Pilih</option>
                                         <option
@@ -1010,7 +1029,7 @@ onMounted(fetchDetail);
                                         v-if="field.textarea"
                                         v-model="form.data_pekerjaan[field.key]"
                                         rows="3"
-                                        class="w-full border border-[#c8ddd6] rounded-lg px-3 py-2 text-sm text-[#1e3329] focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 bg-white transition-all"
+                                        class="w-full max-h-24 overflow-y-auto resize-none border border-[#c8ddd6] rounded-lg px-3 py-2 text-sm text-[#1e3329] focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 bg-white transition-all"
                                     ></textarea>
                                     <input
                                         v-else
@@ -1602,13 +1621,15 @@ onMounted(fetchDetail);
 
                         <div class="space-y-3">
                             <div
-                                class="rounded-lg border border-[#c8ddd6] bg-white p-3"
+                                class="rounded-lg border border-[#c8ddd6] bg-white p-3 overflow-hidden"
+                                style="max-height: 210px"
                             >
                                 <canvas
                                     ref="signatureCanvas"
                                     width="720"
                                     height="180"
-                                    class="block h-40 w-full rounded-md bg-white touch-none cursor-crosshair"
+                                    class="block w-full rounded-md bg-white touch-none cursor-crosshair"
+                                    style="height: 160px; max-height: 160px"
                                     :class="{
                                         'opacity-60 cursor-not-allowed':
                                             !canEdit,

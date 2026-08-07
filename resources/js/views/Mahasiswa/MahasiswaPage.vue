@@ -2,12 +2,19 @@
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import AppLayout from "../../layouts/AppLayout.vue";
-import { plottingService } from "../../services/lspService";
+import {
+    plottingService,
+    apl01PengajuanService,
+} from "../../services/lspService";
+import BaseModal from "../../components/BaseModal.vue";
 
 const router = useRouter();
 const loading = ref(false);
 const list = ref([]);
 const error = ref("");
+const confirmModal = ref(false);
+const selectedItem = ref(null);
+const myPengajuanSkemaIds = ref(new Set());
 
 const fetchSkemaTersedia = async () => {
     loading.value = true;
@@ -64,13 +71,43 @@ const getMasaName = (item) => {
 };
 
 const pilihSkema = (item) => {
+    if (myPengajuanSkemaIds.value.has(item.kdlsp_periode_skema)) {
+        router.push({
+            name: "mahasiswa-sertifikasi-form",
+            params: { id: item.kdlsp_periode_skema },
+        });
+        return;
+    }
+
+    selectedItem.value = item;
+    confirmModal.value = true;
+};
+
+const confirmPilihSkema = () => {
+    confirmModal.value = false;
     router.push({
         name: "mahasiswa-sertifikasi-form",
-        params: { id: item.kdlsp_periode_skema },
+        params: { id: selectedItem.value.kdlsp_periode_skema },
     });
 };
 
-onMounted(fetchSkemaTersedia);
+const fetchMyPengajuan = async () => {
+    try {
+        const res = await apl01PengajuanService.getAll();
+        myPengajuanSkemaIds.value = new Set(
+            (Array.isArray(res.data) ? res.data : []).map(
+                (p) => p.kdlsp_periode_skema,
+            ),
+        );
+    } catch {
+        myPengajuanSkemaIds.value = new Set();
+    }
+};
+
+onMounted(() => {
+    fetchSkemaTersedia();
+    fetchMyPengajuan();
+});
 </script>
 
 <template>
@@ -142,9 +179,51 @@ onMounted(fetchSkemaTersedia);
                     @click="pilihSkema(item)"
                     class="mt-5 w-full bg-[#2d4a3e] hover:bg-[#3d6355] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-all"
                 >
-                    Pilih Skema
+                    {{
+                        myPengajuanSkemaIds.has(item.kdlsp_periode_skema)
+                            ? "Lanjutkan"
+                            : "Pilih Skema"
+                    }}
                 </button>
             </div>
         </div>
+
+        <!-- modal konfirmasi -->
+        <BaseModal
+            :show="confirmModal"
+            title="Konfirmasi Pengambilan Skema"
+            @close="confirmModal = false"
+        >
+            <div class="space-y-4">
+                <p class="text-sm text-[#1e3329]">
+                    Apakah Anda yakin ingin mengambil skema sertifikasi
+                    <strong>{{ getSkemaName(selectedItem) }}</strong>
+                    pada periode
+                    <strong>{{ getPeriodeName(selectedItem) }}</strong
+                    >?
+                </p>
+                <p
+                    class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5"
+                >
+                    Setelah dikonfirmasi, tagihan pembayaran akan diterbitkan
+                    atas nama Anda dan Anda akan diarahkan ke halaman pengisian
+                    FR.APL.01.
+                </p>
+                <div class="flex justify-end gap-2 pt-1">
+                    <button
+                        @click="confirmModal = false"
+                        class="px-4 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-all"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        @click="confirmPilihSkema"
+                        class="px-5 py-2 text-xs font-semibold bg-[#2d4a3e] hover:bg-[#3d6355] text-white rounded-lg transition-all"
+                    >
+                        Ya, Ambil Skema Ini
+                    </button>
+                </div>
+            </div>
+        </BaseModal>
     </AppLayout>
 </template>

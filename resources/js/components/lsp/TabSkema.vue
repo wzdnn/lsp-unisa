@@ -13,7 +13,7 @@ const saving = ref(false);
 const toggling = ref(null);
 const error = ref("");
 const editId = ref(null);
-const form = ref({ skema: "", no_skema: "", nominal: "" });
+const form = ref({ skema: "", no_skema: "", nominal: "", batas_hari: "" });
 
 const fetch = async () => {
     loading.value = true;
@@ -28,7 +28,7 @@ const fetch = async () => {
 };
 
 const openCreate = () => {
-    form.value = { skema: "", no_skema: "", nominal: "" };
+    form.value = { skema: "", no_skema: "", nominal: "", batas_hari: "" };
     isEdit.value = false;
     editId.value = null;
     error.value = "";
@@ -49,6 +49,9 @@ const openEdit = async (item) => {
     try {
         const res = await skemaTarifService.getOne(item.kdlsp_skema);
         form.value.nominal = res.data?.nominal ?? "";
+        form.value.batas_hari = res.data?.batas_pembayaran_jam
+            ? res.data.batas_pembayaran_jam / 24
+            : "";
     } catch {
         form.value.nominal = "";
     }
@@ -77,6 +80,9 @@ const submit = async () => {
             await skemaTarifService.save({
                 kdlsp_skema,
                 nominal: form.value.nominal,
+                batas_pembayaran_jam: form.value.batas_hari
+                    ? form.value.batas_hari * 24
+                    : null,
             });
         }
 
@@ -205,6 +211,11 @@ onMounted(fetch);
                         <th
                             class="text-left px-5 py-3 text-xs font-semibold text-[#3d6355] uppercase tracking-wider"
                         >
+                            Batas Bayar
+                        </th>
+                        <th
+                            class="text-left px-5 py-3 text-xs font-semibold text-[#3d6355] uppercase tracking-wider"
+                        >
                             Status
                         </th>
                         <th
@@ -217,7 +228,7 @@ onMounted(fetch);
                 <tbody>
                     <tr v-if="list.length === 0">
                         <td
-                            colspan="6"
+                            colspan="7"
                             class="text-center py-12 text-[#7aab95] text-sm"
                         >
                             Belum ada skema
@@ -244,6 +255,15 @@ onMounted(fetch);
                                       Number(item.tarif.nominal).toLocaleString(
                                           "id-ID",
                                       )
+                                    : "-"
+                            }}
+                        </td>
+                        <td class="px-5 py-3.5 text-[#1e3329]">
+                            {{
+                                item.tarif?.batas_pembayaran_jam
+                                    ? Math.round(
+                                          item.tarif.batas_pembayaran_jam / 24,
+                                      ) + " hari"
                                     : "-"
                             }}
                         </td>
@@ -384,6 +404,23 @@ onMounted(fetch);
                     />
                     <p class="text-xs text-[#7aab95] mt-1">
                         Kosongkan jika skema ini belum dikenai biaya
+                    </p>
+                </div>
+                <div>
+                    <label
+                        class="text-xs font-semibold text-[#3d6355] uppercase tracking-wider block mb-1.5"
+                    >
+                        Batas Waktu Pembayaran (hari)
+                    </label>
+                    <input
+                        v-model.number="form.batas_hari"
+                        type="number"
+                        min="1"
+                        placeholder="cth: 3"
+                        class="w-full border border-[#c8ddd6] rounded-xl px-4 py-2.5 text-sm text-[#1e3329] placeholder-slate-400 focus:outline-none focus:border-[#4a7c6b] focus:ring-2 focus:ring-[#4a7c6b]/15 transition-all"
+                    />
+                    <p class="text-xs text-[#7aab95] mt-1">
+                        Kosongkan jika tidak ada batas waktu pembayaran
                     </p>
                 </div>
                 <div

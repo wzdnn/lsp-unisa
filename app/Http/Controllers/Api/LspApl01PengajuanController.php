@@ -61,6 +61,7 @@ class LspApl01PengajuanController extends Controller
 
         if ($pengajuan) {
             $pengajuan->sudah_bayar = $this->cekPembayaran($pengajuan->kdlsp_apl01_pengajuan);
+            $pengajuan->batas_pembayaran = $this->batasPembayaranTagihan($pengajuan->kdlsp_apl01_pengajuan);
         }
 
         return response()->json($pengajuan);
@@ -203,36 +204,46 @@ class LspApl01PengajuanController extends Controller
     }
 
     public function mulai(Request $request)
-{
-    if (session('user.role') !== 'mahasiswa') {
-        abort(403, 'Hanya mahasiswa yang dapat mendaftar skema');
+    {
+        if (session('user.role') !== 'mahasiswa') {
+            abort(403, 'Hanya mahasiswa yang dapat mendaftar skema');
+        }
+
+        $request->validate([
+            'kdlsp_periode_skema' => 'required|exists:lsp_periode_skema,kdlsp_periode_skema',
+        ]);
+
+        $user = $this->currentLspUser();
+
+        try {
+            $pengajuan = LspApl01Pengajuan::firstOrCreate(
+                [
+                    'kdlsp_user' => $user->kdlsp_user,
+                    'kdlsp_periode_skema' => $request->kdlsp_periode_skema,
+                ],
+                [
+                    'data_pribadi' => [],
+                    'data_pekerjaan' => [],
+                    'data_sertifikasi' => [],
+                    'data_persyaratan' => [],
+                    'status' => 'draft',
+                ]
+            );
+        } catch (\Illuminate\Database\QueryException $e) {
+            if (str_contains($e->getMessage(), 'Nominal tarif')) {
+                return response()->json([
+                    'message' => 'Skema ini belum tersedia untuk pendaftaran. Silakan hubungi admin.',
+                ], 422);
+            }
+            throw $e;
+        }
+
+        $pengajuan->load(['periodeSkema.periode', 'periodeSkema.masaPeriode', 'periodeSkema.skema', 'dokumen', 'documentSignatures']);
+        $pengajuan->sudah_bayar = $this->cekPembayaran($pengajuan->kdlsp_apl01_pengajuan);
+        $pengajuan->batas_pembayaran = $this->batasPembayaranTagihan($pengajuan->kdlsp_apl01_pengajuan);
+
+        return response()->json($pengajuan);
     }
-
-    $request->validate([
-        'kdlsp_periode_skema' => 'required|exists:lsp_periode_skema,kdlsp_periode_skema',
-    ]);
-
-    $user = $this->currentLspUser();
-
-    $pengajuan = LspApl01Pengajuan::firstOrCreate(
-        [
-            'kdlsp_user' => $user->kdlsp_user,
-            'kdlsp_periode_skema' => $request->kdlsp_periode_skema,
-        ],
-        [
-            'data_pribadi' => [],
-            'data_pekerjaan' => [],
-            'data_sertifikasi' => [],
-            'data_persyaratan' => [],
-            'status' => 'draft',
-        ]
-    );
-
-    $pengajuan->load(['periodeSkema.periode', 'periodeSkema.masaPeriode', 'periodeSkema.skema', 'dokumen', 'documentSignatures']);
-    $pengajuan->sudah_bayar = $this->cekPembayaran($pengajuan->kdlsp_apl01_pengajuan);
-
-    return response()->json($pengajuan);
-}
 
     private function currentLspUser(bool $required = true): ?LspUser
     {

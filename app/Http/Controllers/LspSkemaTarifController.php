@@ -28,11 +28,15 @@ class LspSkemaTarifController extends Controller
         $validated = $request->validate([
             'kdlsp_skema' => 'required|exists:lsp_skema,kdlsp_skema',
             'nominal' => 'required|integer|min:0',
+            'batas_pembayaran_jam' => 'nullable|integer|min:1',
         ]);
 
         $tarif = LspSkemaTarif::updateOrCreate(
             ['kdlsp_skema' => $validated['kdlsp_skema']],
-            ['nominal' => $validated['nominal']]
+            [
+                'nominal' => $validated['nominal'],
+                'batas_pembayaran_jam' => $validated['batas_pembayaran_jam'] ?? null,
+            ]
         );
 
         return response()->json($tarif);
