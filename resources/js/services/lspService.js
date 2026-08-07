@@ -102,3 +102,32 @@ export const apl01DokumenService = {
             { status },
         ),
 };
+
+export const assessmentFormService = {
+    getAll: () => api.get('/assessment-forms'),
+    getVersion: (id) => api.get(`/assessment-form-versions/${id}`),
+    create: (data) => api.post('/assessment-forms', data),
+    update: (id, data) => api.put(`/assessment-form-versions/${id}`, data),
+    publish: (id) => api.post(`/assessment-form-versions/${id}/publish`),
+    duplicate: (id) => api.post(`/assessment-form-versions/${id}/duplicate`),
+};
+
+export const assessmentService = {
+    getAll: () => api.get('/assessments'),
+    getOne: (id) => api.get(`/assessments/${id}`),
+    assign: (data) => api.post('/assessments/assign', data),
+    saveAnswers: (id, answers) => api.put(`/assessments/${id}/answers`, { answers }),
+    submit: (id) => api.post(`/assessments/${id}/submit`),
+    review: (id, reviews) => api.put(`/assessments/${id}/review`, { reviews }),
+    decide: (id, data) => api.put(`/assessments/${id}/decision`, data),
+    getProcesses: () => api.get('/assessment-processes'),
+    assignApl02: (processId, data) => api.post(`/assessment-processes/${processId}/assign-apl02`, data),
+    requestRevision: (id, notes) => api.put(`/assessments/${id}/request-revision`, { notes }),
+    completeReview: (id) => api.put(`/assessments/${id}/complete-review`),
+    uploadEvidence: (id, questionId, file) => {
+        const data = new FormData();
+        data.append('question_id', questionId);
+        data.append('file', file);
+        return api.post(`/assessments/${id}/evidences`, data);
+    },
+};

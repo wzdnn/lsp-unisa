@@ -49,4 +49,9 @@ class LspApl01Pengajuan extends Model
             ->where('document_type', 'apl01_pengajuan');
     }
 
+    public function assessmentProcess()
+    {
+        return $this->hasOne(AssessmentProcess::class, 'kdlsp_apl01_pengajuan', 'kdlsp_apl01_pengajuan');
+    }
+
 }

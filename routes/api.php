@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AssessmentFormController;
+use App\Http\Controllers\Api\AssessmentWorkflowController;
 use App\Http\Controllers\Api\LspApl01DokumenController;
 use App\Http\Controllers\Api\LspApl01PengajuanController;
 use App\Http\Controllers\Api\LspPeriodeController;
@@ -17,6 +19,27 @@ use Illuminate\Support\Facades\Route;
 
 // Protected routes — tambah 'web' agar session terbaca
 Route::middleware(['web', 'auth.session'])->group(function () {
+
+    Route::get('assessment-forms', [AssessmentFormController::class, 'index']);
+    Route::post('assessment-forms', [AssessmentFormController::class, 'store']);
+    Route::get('assessment-form-versions/{assessmentFormVersion}', [AssessmentFormController::class, 'show']);
+    Route::put('assessment-form-versions/{assessmentFormVersion}', [AssessmentFormController::class, 'update']);
+    Route::post('assessment-form-versions/{assessmentFormVersion}/publish', [AssessmentFormController::class, 'publish']);
+    Route::post('assessment-form-versions/{assessmentFormVersion}/duplicate', [AssessmentFormController::class, 'duplicate']);
+
+    Route::get('assessments', [AssessmentWorkflowController::class, 'index']);
+    Route::get('assessment-processes', [AssessmentWorkflowController::class, 'processes']);
+    Route::post('assessment-processes/{assessmentProcess}/assign-apl02', [AssessmentWorkflowController::class, 'assignApl02']);
+    Route::post('assessments/assign', [AssessmentWorkflowController::class, 'assign']);
+    Route::get('assessments/{assessmentAssignment}', [AssessmentWorkflowController::class, 'show']);
+    Route::put('assessments/{assessmentAssignment}/answers', [AssessmentWorkflowController::class, 'saveAnswers']);
+    Route::post('assessments/{assessmentAssignment}/evidences', [AssessmentWorkflowController::class, 'uploadEvidence']);
+    Route::delete('assessments/{assessmentAssignment}/evidences/{assessmentEvidence}', [AssessmentWorkflowController::class, 'deleteEvidence']);
+    Route::post('assessments/{assessmentAssignment}/submit', [AssessmentWorkflowController::class, 'submit']);
+    Route::put('assessments/{assessmentAssignment}/review', [AssessmentWorkflowController::class, 'review']);
+    Route::put('assessments/{assessmentAssignment}/request-revision', [AssessmentWorkflowController::class, 'requestRevision']);
+    Route::put('assessments/{assessmentAssignment}/complete-review', [AssessmentWorkflowController::class, 'completeReview']);
+    Route::put('assessments/{assessmentAssignment}/decision', [AssessmentWorkflowController::class, 'decide']);
 
     Route::get('/dashboard', function () {
         return response()->json([

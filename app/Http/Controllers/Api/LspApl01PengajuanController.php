@@ -10,6 +10,7 @@ use App\Models\LspUserSignature;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Traits\ChecksLspPayment;
+use App\Services\AssessmentProcessService;
 
 class LspApl01PengajuanController extends Controller
 {
@@ -181,7 +182,7 @@ class LspApl01PengajuanController extends Controller
         return response()->json($pengajuan);
     }
 
-    public function review(Request $request, $kdlsp_apl01_pengajuan)
+    public function review(Request $request, $kdlsp_apl01_pengajuan, AssessmentProcessService $assessmentProcessService)
     {
         $this->authorizeAdminRole();
 
@@ -193,14 +194,20 @@ class LspApl01PengajuanController extends Controller
         $pengajuan = LspApl01Pengajuan::findOrFail($kdlsp_apl01_pengajuan);
         $reviewer = $this->currentLspUser(false);
 
-        $pengajuan->update([
-            'status' => $validated['status'],
-            'catatan_admin' => $validated['catatan_admin'] ?? null,
-            'reviewed_by' => $reviewer?->kdlsp_user,
-            'reviewed_at' => now(),
-        ]);
+        DB::transaction(function () use ($pengajuan, $validated, $reviewer, $assessmentProcessService) {
+            $pengajuan->update([
+                'status' => $validated['status'],
+                'catatan_admin' => $validated['catatan_admin'] ?? null,
+                'reviewed_by' => $reviewer?->kdlsp_user,
+                'reviewed_at' => now(),
+            ]);
 
-        return response()->json($pengajuan->load(['user.person', 'reviewer.person']));
+            if ($validated['status'] === 'diterima') {
+                $assessmentProcessService->startFromAcceptedApl01($pengajuan);
+            }
+        });
+
+        return response()->json($pengajuan->load(['user.person', 'reviewer.person', 'assessmentProcess']));
     }
 
     public function mulai(Request $request)

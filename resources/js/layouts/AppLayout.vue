@@ -19,7 +19,31 @@ const navItems = computed(() => {
                 to: "/mahasiswa",
                 activePaths: ["/mahasiswa/sertifikasi"],
             },
+            {
+                label: "Assessment Saya",
+                icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+                to: "/assessments/active",
+                children: [
+                    { label: "Tugas Aktif", to: "/assessments/active" },
+                    { label: "Perlu Revisi", to: "/assessments/revision" },
+                    { label: "Riwayat", to: "/assessments/history" },
+                ],
+            },
         ];
+    }
+
+    if (["dosen", "asesor_luar"].includes(auth.user?.role)) {
+        return [{
+            label: "Assessment Asesi",
+            icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
+            to: "/assessments/pending",
+            children: [
+                { label: "Menunggu Review", to: "/assessments/pending" },
+                { label: "Sedang Dinilai", to: "/assessments/reviewing" },
+                { label: "Menunggu Revisi Asesi", to: "/assessments/assessor-revisions" },
+                { label: "Selesai", to: "/assessments/completed" },
+            ],
+        }];
     }
 
     return [
@@ -58,6 +82,16 @@ const navItems = computed(() => {
             ],
         },
         {
+            label: "Form Assessment",
+            icon: "M9 12l2 2 4-4m5-2a8 8 0 11-16 0 8 8 0 0116 0z",
+            to: "/admin/assessment-forms",
+            children: [
+                { label: "Template Tersimpan", to: "/admin/assessment-forms" },
+                { label: "Buat Template", to: "/admin/assessment-forms/create" },
+                { label: "Proses & Penugasan", to: "/admin/assessment-forms/assignments" },
+            ],
+        },
+        {
             label: "User & Asesor",
             icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
             to: "/admin/user",
@@ -89,7 +123,6 @@ const activeNavLabel = computed(() => {
         if (activeChild) return activeChild.label;
         if (isActive(item)) return item.label;
     }
-
     return "Dashboard";
 });
 </script>

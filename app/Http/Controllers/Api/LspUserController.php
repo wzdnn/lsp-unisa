@@ -159,7 +159,7 @@ class LspUserController extends Controller
     private function authorizeAdminRole(): void
     {
         $role = session('user.role');
-        if (!in_array($role, ['admin', 'superadmin'])) {
+        if (!in_array($role, ['admin', 'superadmin', 'tendik'])) {
             abort(403, 'Hanya admin yang dapat melakukan aksi ini');
         }
     }
