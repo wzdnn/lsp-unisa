@@ -11,6 +11,8 @@ use App\Models\AssessmentFormVersion;
 use App\Models\AssessmentProcess;
 use App\Models\AssessmentReview;
 use App\Models\LspUser;
+use App\Models\LspUserSignature;
+use App\Models\LspPeriodeSkema;
 use App\Services\AssessmentProcessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -45,7 +47,7 @@ class AssessmentWorkflowController extends Controller
         return response()->json($assignment->load($this->relations()), 201);
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $user = $this->currentUser();
         $role = session('user.role');
@@ -55,6 +57,9 @@ class AssessmentWorkflowController extends Controller
             $query->where('assigned_to', $user->kdlsp_user)->where('assignee_role', 'asesi');
         } elseif (in_array($role, ['dosen', 'asesor_luar'])) {
             $query->whereHas('process', fn ($q) => $q->where('assessor_id', $user->kdlsp_user));
+            if ($request->filled('process_id')) {
+                $query->where('process_id', $request->integer('process_id'));
+            }
         } else {
             $this->authorizeAdmin();
         }
@@ -75,9 +80,16 @@ class AssessmentWorkflowController extends Controller
             'due_at' => 'nullable|date',
         ]);
 
-        $versions = AssessmentFormVersion::with('form')->whereIn('id', $data['form_version_ids'])
+        $versions = AssessmentFormVersion::with('form.programs')->whereIn('id', $data['form_version_ids'])
             ->where('status', 'published')->get();
         abort_if($versions->count() !== count(array_unique($data['form_version_ids'])), 422, 'Semua form harus berstatus published');
+
+        $schemeId = LspPeriodeSkema::findOrFail($data['kdlsp_periode_skema'])->kdlsp_skema;
+        $asesi = LspUser::findOrFail($data['asesi_id']);
+        foreach ($versions as $version) {
+            abort_if((int) $version->form->kdlsp_skema !== (int) $schemeId, 422, "Form {$version->form->code} tidak sesuai skema periode");
+            abort_if(!$asesi->kdunit || !$version->form->programs->contains('kdunitkerja', $asesi->kdunit), 422, "Form {$version->form->code} tidak tersedia untuk program studi asesi");
+        }
 
         $process = DB::transaction(function () use ($data, $versions) {
             $process = AssessmentProcess::firstOrCreate([
@@ -119,8 +131,8 @@ class AssessmentWorkflowController extends Controller
 
     public function saveAnswers(Request $request, AssessmentAssignment $assessmentAssignment)
     {
-        $this->authorizeOwner($assessmentAssignment);
-        abort_unless(in_array($assessmentAssignment->status, ['assigned', 'draft', 'revision_required']), 422, 'Jawaban sudah dikunci');
+        $this->authorizeEditor($assessmentAssignment);
+        abort_unless($this->answersAreEditable($assessmentAssignment), 422, 'Jawaban sudah dikunci');
         $data = $request->validate([
             'answers' => 'required|array',
             'answers.*.question_id' => 'required|integer',
@@ -138,7 +150,7 @@ class AssessmentWorkflowController extends Controller
                     ['answer_text' => $answer['answer_text'] ?? null, 'answer_json' => $answer['answer_json'] ?? null]
                 );
             }
-            $assessmentAssignment->update(['status' => 'draft']);
+            $assessmentAssignment->update(['status' => $assessmentAssignment->status === 'under_review' ? 'under_review' : 'draft']);
         });
 
         return $assessmentAssignment->fresh()->load($this->relations());
@@ -146,8 +158,8 @@ class AssessmentWorkflowController extends Controller
 
     public function uploadEvidence(Request $request, AssessmentAssignment $assessmentAssignment)
     {
-        $this->authorizeOwner($assessmentAssignment);
-        abort_unless(in_array($assessmentAssignment->status, ['assigned', 'draft', 'revision_required']), 422, 'Jawaban sudah dikunci');
+        $this->authorizeEditor($assessmentAssignment);
+        abort_unless($this->answersAreEditable($assessmentAssignment), 422, 'Jawaban sudah dikunci');
         $data = $request->validate(['question_id' => 'required|integer', 'file' => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png,doc,docx']);
         $questionIds = $assessmentAssignment->version->sections()->with('questions')->get()->flatMap->questions->pluck('id');
         abort_unless($questionIds->contains($data['question_id']), 422, 'Pertanyaan tidak termasuk form ini');
@@ -172,15 +184,61 @@ class AssessmentWorkflowController extends Controller
 
     public function submit(AssessmentAssignment $assessmentAssignment)
     {
-        $this->authorizeOwner($assessmentAssignment);
-        abort_unless(in_array($assessmentAssignment->status, ['assigned', 'draft', 'revision_required']), 422, 'Form tidak dapat dikirim');
+        $this->authorizeEditor($assessmentAssignment);
+        abort_unless($this->answersAreEditable($assessmentAssignment), 422, 'Form tidak dapat dikirim');
+        $actorRole = session('user.role') === 'mahasiswa' ? 'asesi' : 'asesor';
         $required = $assessmentAssignment->version->sections()->with('questions')->get()->flatMap->questions
-            ->where('is_required', true)->pluck('id');
+            ->where('is_required', true)
+            ->filter(fn ($question) => $question->type !== 'signature' || ($question->settings['signer_role'] ?? $actorRole) === $actorRole)
+            ->pluck('id');
         $answered = $assessmentAssignment->answers()->where(function ($q) {
             $q->whereNotNull('answer_text')->orWhereNotNull('answer_json')->orWhereHas('evidences');
         })->pluck('question_id');
         abort_if($required->diff($answered)->isNotEmpty(), 422, 'Masih ada pertanyaan wajib yang belum dijawab');
-        $assessmentAssignment->update(['status' => 'submitted', 'submitted_at' => now()]);
+        $assessorOwned = $assessmentAssignment->version->form->filled_by === 'asesor';
+        $assessmentAssignment->update([
+            'status' => $assessorOwned ? 'completed' : 'submitted',
+            'submitted_at' => now(),
+            'completed_at' => $assessorOwned ? now() : null,
+        ]);
+        if ($assessorOwned) {
+            app(AssessmentProcessService::class)->syncAfterCompletion($assessmentAssignment);
+        }
+        return $assessmentAssignment->fresh()->load($this->relations());
+    }
+
+    public function sign(AssessmentAssignment $assessmentAssignment, Request $request)
+    {
+        $user = $this->authorizeEditor($assessmentAssignment);
+        $sharedAssessorSigning = $assessmentAssignment->version->form->filled_by === 'bersama'
+            && in_array(session('user.role'), ['dosen', 'asesor_luar'])
+            && $assessmentAssignment->status === 'submitted';
+        abort_unless($this->answersAreEditable($assessmentAssignment) || $sharedAssessorSigning, 422, 'Form sudah dikunci');
+        $data = $request->validate(['question_id' => 'required|integer']);
+        $question = $assessmentAssignment->version->sections()->with('questions')->get()
+            ->flatMap->questions->firstWhere('id', $data['question_id']);
+        abort_unless($question && $question->type === 'signature', 422, 'Pertanyaan bukan kolom tanda tangan');
+        $actorRole = session('user.role') === 'mahasiswa' ? 'asesi' : 'asesor';
+        abort_unless(($question->settings['signer_role'] ?? $actorRole) === $actorRole, 403, 'Kolom tanda tangan ini bukan untuk peran Anda');
+
+        $signature = LspUserSignature::where('kdlsp_user', $user->kdlsp_user)
+            ->where('is_active', true)->latest('kdlsp_user_signature')->first();
+        abort_unless($signature, 422, 'Simpan tanda tangan aktif pada profil terlebih dahulu');
+
+        AssessmentAnswer::updateOrCreate(
+            ['assignment_id' => $assessmentAssignment->id, 'question_id' => $question->id],
+            ['answer_text' => null, 'answer_json' => [
+                'signed' => true,
+                'signer_id' => $user->kdlsp_user,
+                'signer_role' => session('user.role'),
+                'signature_id' => $signature->kdlsp_user_signature,
+                'signed_at' => now()->toIso8601String(),
+            ]]
+        );
+        if (!$sharedAssessorSigning) {
+            $assessmentAssignment->update(['status' => 'draft']);
+        }
+
         return $assessmentAssignment->fresh()->load($this->relations());
     }
 
@@ -223,7 +281,7 @@ class AssessmentWorkflowController extends Controller
         return $assessmentAssignment->fresh()->load($this->relations());
     }
 
-    public function completeReview(AssessmentAssignment $assessmentAssignment)
+    public function completeReview(AssessmentAssignment $assessmentAssignment, AssessmentProcessService $service)
     {
         $this->authorizeAssessor($assessmentAssignment);
         abort_unless(in_array($assessmentAssignment->status, ['submitted', 'under_review']), 422, 'Review tidak dapat diselesaikan');
@@ -242,10 +300,8 @@ class AssessmentWorkflowController extends Controller
                 'completed_at' => now(),
                 'revision_notes' => null,
             ]);
-            if ($assessmentAssignment->version->form->code === 'FR.APL.02') {
-                $assessmentAssignment->process->update(['current_stage' => 'persiapan_asesmen']);
-            }
         });
+        $service->syncAfterCompletion($assessmentAssignment);
 
         return $assessmentAssignment->fresh()->load($this->relations());
     }
@@ -262,6 +318,31 @@ class AssessmentWorkflowController extends Controller
         ]);
         $assessmentAssignment->update(['status' => $decision->is_published ? 'result_published' : 'assessed', 'reviewed_at' => now()]);
         return $assessmentAssignment->fresh()->load($this->relations());
+    }
+
+    public function decideProcess(Request $request, AssessmentProcess $assessmentProcess)
+    {
+        abort_unless(in_array(session('user.role'), ['dosen', 'asesor_luar']), 403);
+        $assessor = $this->currentUser();
+        abort_unless($assessmentProcess->assessor_id === $assessor->kdlsp_user, 403);
+        abort_unless($assessmentProcess->current_stage === 'keputusan', 422, 'Seluruh form wajib belum selesai');
+        $data = $request->validate([
+            'result' => 'required|in:competent,not_competent',
+            'notes' => 'nullable|string|max:10000',
+            'publish' => 'sometimes|boolean',
+        ]);
+
+        $assessmentProcess->update([
+            'final_result' => $data['result'],
+            'decision_notes' => $data['notes'] ?? null,
+            'decided_by' => $assessor->kdlsp_user,
+            'decided_at' => now(),
+            'result_published_at' => $request->boolean('publish') ? now() : null,
+            'status' => $request->boolean('publish') ? 'completed' : 'active',
+            'completed_at' => $request->boolean('publish') ? now() : null,
+        ]);
+
+        return $assessmentProcess->fresh()->load('assignments.version.form');
     }
 
     private function relations(): array
@@ -286,6 +367,28 @@ class AssessmentWorkflowController extends Controller
     private function authorizeOwner(AssessmentAssignment $assignment): void
     {
         abort_unless($assignment->assigned_to === $this->currentUser()->kdlsp_user, 403);
+    }
+
+    private function authorizeEditor(AssessmentAssignment $assignment): LspUser
+    {
+        $user = $this->currentUser();
+        $filledBy = $assignment->version->form->filled_by;
+        $isOwner = $assignment->assigned_to === $user->kdlsp_user;
+        $isProcessAssessor = $assignment->process->assessor_id === $user->kdlsp_user;
+
+        abort_unless(
+            ($isOwner && in_array($filledBy, ['asesi', 'asesor', 'bersama'])) ||
+            ($isProcessAssessor && in_array($filledBy, ['asesor', 'bersama'])),
+            403
+        );
+
+        return $user;
+    }
+
+    private function answersAreEditable(AssessmentAssignment $assignment): bool
+    {
+        return in_array($assignment->status, ['assigned', 'draft', 'revision_required'])
+            || ($assignment->status === 'under_review' && $assignment->version->form->filled_by === 'asesor');
     }
 
     private function authorizeAssessor(AssessmentAssignment $assignment): LspUser

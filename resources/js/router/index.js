@@ -11,6 +11,7 @@ import DosenPage from "../views/Dosen/DosenPage.vue";
 import MahasiswaPage from "../views/Mahasiswa/MahasiswaPage.vue";
 import MahasiswaSertifikasiForm from "../views/Mahasiswa/MahasiswaSertifikasiForm.vue";
 const AssessmentPage = () => import("../views/AssessmentPage.vue");
+const AssesseeListPage = () => import("../views/AssesseeListPage.vue");
 const AssessmentFormPage = () => import("../views/Admin/AssessmentFormPage.vue");
 
 const routes = [
@@ -96,6 +97,11 @@ const routes = [
         component: AssessmentPage,
         props: { view: "history" },
         meta: { role: ["mahasiswa"] },
+    },
+    {
+        path: "/assessments/assessees",
+        component: AssesseeListPage,
+        meta: { role: ["dosen", "asesor_luar"] },
     },
     {
         path: "/assessments/pending",

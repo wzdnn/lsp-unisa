@@ -8,6 +8,8 @@ use App\Models\PtPerson;
 use App\Models\PtUnitKerja;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class LspUserController extends Controller
 {
@@ -99,35 +101,36 @@ class LspUserController extends Controller
         return response()->json($user, 201);
     }
 
-    // Update asesor luar
+    // Update user dari halaman manajemen user
     public function update(Request $request, $kdlsp_user)
     {
         $this->authorizeAdminRole();
 
         $user = LspUser::findOrFail($kdlsp_user);
 
-        if ($user->role !== 'asesor_luar') {
-            return response()->json(['message' => 'Hanya asesor luar yang bisa diedit'], 422);
-        }
-
-        $request->validate([
+        $data = $request->validate([
             'username' => 'sometimes|string|max:100|unique:lsp_user,username,' . $kdlsp_user . ',kdlsp_user',
             'password' => 'nullable|string|min:6',
             'namalengkap' => 'sometimes|string|max:200',
+            'role' => ['sometimes', Rule::in(['mahasiswa', 'dosen', 'tendik', 'asesor_luar'])],
+            'kdunit' => 'nullable|integer|exists:pt_unitkerja,kdunitkerja',
+            'isAsesor' => 'sometimes|boolean',
         ]);
 
-        $updateData = array_filter([
-            'username' => $request->username,
-            'namalengkap' => $request->namalengkap,
-        ]);
+        DB::transaction(function () use ($user, $data) {
+            $role = $data['role'] ?? $user->role;
+            $updateData = collect($data)->only(['username', 'role', 'kdunit'])->all();
+            $updateData['isAsesor'] = in_array($role, ['dosen', 'asesor_luar'])
+                ? (bool) ($data['isAsesor'] ?? $user->isAsesor) : false;
+            if (!empty($data['password'])) $updateData['password'] = Hash::make($data['password']);
+            if (array_key_exists('namalengkap', $data)) {
+                if ($user->kdperson) PtPerson::whereKey($user->kdperson)->update(['namalengkap' => $data['namalengkap']]);
+                else $updateData['namalengkap'] = $data['namalengkap'];
+            }
+            $user->update($updateData);
+        });
 
-        if ($request->filled('password')) {
-            $updateData['password'] = Hash::make($request->password);
-        }
-
-        $user->update($updateData);
-
-        return response()->json($user);
+        return response()->json($user->fresh()->load(['person', 'unitKerja']));
     }
 
     // Hapus asesor luar
@@ -147,9 +150,10 @@ class LspUserController extends Controller
     }
 
     // List unit kerja (untuk dropdown)
-    public function unitKerja()
+    public function unitKerja(Request $request)
     {
         $units = PtUnitKerja::select('kdunitkerja', 'unitkerja', 'unitkerjapendek')
+            ->when($request->boolean('program_only'), fn ($query) => $query->where('leveling', 4))
             ->orderBy('unitkerja')
             ->get();
 

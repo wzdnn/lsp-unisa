@@ -34,14 +34,12 @@ const navItems = computed(() => {
 
     if (["dosen", "asesor_luar"].includes(auth.user?.role)) {
         return [{
-            label: "Assessment Asesi",
+            label: "Penilaian Asesi",
             icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
-            to: "/assessments/pending",
+            to: "/assessments/assessees",
+            activePaths: ["/assessments"],
             children: [
-                { label: "Menunggu Review", to: "/assessments/pending" },
-                { label: "Sedang Dinilai", to: "/assessments/reviewing" },
-                { label: "Menunggu Revisi Asesi", to: "/assessments/assessor-revisions" },
-                { label: "Selesai", to: "/assessments/completed" },
+                { label: "Daftar Asesi", to: "/assessments/assessees" },
             ],
         }];
     }

@@ -59,6 +59,7 @@ export const userService = {
     getDosenInternal: () => api.get("/users/dosen-internal"),
     getAsesor: () => api.get("/users/asesor"),
     getUnitKerja: () => api.get("/users/unit-kerja"),
+    getPrograms: () => api.get("/users/unit-kerja", { params: { program_only: 1 } }),
     toggleAsesor: (id) => api.patch(`/users/${id}/toggle-asesor`),
     storeAsesorLuar: (data) => api.post("/users/asesor-luar", data),
     update: (id, data) => api.put(`/users/${id}`, data),
@@ -113,17 +114,19 @@ export const assessmentFormService = {
 };
 
 export const assessmentService = {
-    getAll: () => api.get('/assessments'),
+    getAll: (params = {}) => api.get('/assessments', { params }),
     getOne: (id) => api.get(`/assessments/${id}`),
     assign: (data) => api.post('/assessments/assign', data),
     saveAnswers: (id, answers) => api.put(`/assessments/${id}/answers`, { answers }),
     submit: (id) => api.post(`/assessments/${id}/submit`),
+    sign: (id, questionId) => api.post(`/assessments/${id}/sign`, { question_id: questionId }),
     review: (id, reviews) => api.put(`/assessments/${id}/review`, { reviews }),
     decide: (id, data) => api.put(`/assessments/${id}/decision`, data),
     getProcesses: () => api.get('/assessment-processes'),
     assignApl02: (processId, data) => api.post(`/assessment-processes/${processId}/assign-apl02`, data),
     requestRevision: (id, notes) => api.put(`/assessments/${id}/request-revision`, { notes }),
     completeReview: (id) => api.put(`/assessments/${id}/complete-review`),
+    decideProcess: (processId, data) => api.put(`/assessment-processes/${processId}/decision`, data),
     uploadEvidence: (id, questionId, file) => {
         const data = new FormData();
         data.append('question_id', questionId);

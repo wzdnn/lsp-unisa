@@ -15,8 +15,10 @@ class DynamicAssessmentSchemaTest extends TestCase
         foreach ([
             'lsp_assessment_forms',
             'lsp_assessment_form_versions',
+            'lsp_assessment_form_prodi',
             'lsp_assessment_sections',
             'lsp_assessment_questions',
+            'lsp_assessment_question_units',
             'lsp_assessment_processes',
             'lsp_assessment_assignments',
             'lsp_assessment_answers',
@@ -30,11 +32,20 @@ class DynamicAssessmentSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumns('lsp_assessment_questions', [
             'type', 'options', 'settings', 'kdlsp_skema_unitkompetensi_elemen_kriteria',
         ]));
+        $this->assertTrue(Schema::hasColumn('lsp_assessment_forms', 'kdlsp_skema'));
+        $this->assertTrue(Schema::hasColumns('lsp_assessment_form_prodi', ['form_id', 'kdunitkerja']));
+        $this->assertTrue(Schema::hasColumns('lsp_assessment_question_units', [
+            'question_id', 'kdlsp_skema_unitkompetensi',
+            'kdlsp_skema_unitkompetensi_elemen', 'kdlsp_skema_unitkompetensi_elemen_kriteria',
+        ]));
         $this->assertTrue(Schema::hasColumns('lsp_assessment_decisions', [
             'result', 'is_published', 'decided_at',
         ]));
         $this->assertTrue(Schema::hasColumns('lsp_assessment_assignments', [
             'revision_notes', 'revision_requested_at', 'completed_at',
+        ]));
+        $this->assertTrue(Schema::hasColumns('lsp_assessment_processes', [
+            'final_result', 'decision_notes', 'decided_by', 'decided_at', 'result_published_at',
         ]));
     }
 }

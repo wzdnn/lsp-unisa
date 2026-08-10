@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { userService } from "../../services/lspService";
+import BaseModal from "../BaseModal.vue";
 
 const emit = defineEmits(["toast"]);
 
@@ -10,6 +11,12 @@ const toggling = ref(null);
 const filterRole = ref("");
 const filterAsesor = ref("");
 const search = ref("");
+const unitList = ref([]);
+const modal = ref(false);
+const saving = ref(false);
+const error = ref("");
+const editId = ref(null);
+const form = ref({ username: "", password: "", namalengkap: "", role: "", kdunit: "", isAsesor: false });
 
 const roleOptions = [
     { value: "", label: "Semua Role" },
@@ -83,6 +90,25 @@ const fetch = async () => {
     }
 };
 
+const openEdit = (item) => {
+    editId.value = item.kdlsp_user;
+    form.value = { username: item.username || "", password: "", namalengkap: item.person?.namalengkap || item.namalengkap || "", role: item.role || "", kdunit: item.kdunit || "", isAsesor: Boolean(item.isAsesor) };
+    error.value = "";
+    modal.value = true;
+};
+
+const submitEdit = async () => {
+    saving.value = true; error.value = "";
+    try {
+        await userService.update(editId.value, { ...form.value, kdunit: form.value.kdunit || null });
+        modal.value = false;
+        emit("toast", { message: "Data user berhasil diperbarui" });
+        await fetch();
+    } catch (err) {
+        error.value = err.response?.data?.message || Object.values(err.response?.data?.errors || {})[0]?.[0] || "Gagal memperbarui user";
+    } finally { saving.value = false; }
+};
+
 const getNama = (item) => {
     // Jika ada data person (user internal SSO)
     if (item.person) {
@@ -123,7 +149,9 @@ const toggleAsesor = async (item) => {
     }
 };
 
-onMounted(fetch);
+onMounted(async () => {
+    await Promise.all([fetch(), userService.getUnitKerja().then((response) => { unitList.value = response.data; })]);
+});
 </script>
 
 <template>
@@ -291,12 +319,13 @@ onMounted(fetch);
                         >
                             Status Asesor
                         </th>
+                        <th class="text-right px-5 py-3 text-xs font-semibold text-[#3d6355] uppercase tracking-wider">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-if="filtered.length === 0">
                         <td
-                            colspan="5"
+                            colspan="6"
                             class="text-center py-12 text-[#7aab95] text-sm"
                         >
                             Tidak ada data
@@ -405,9 +434,25 @@ onMounted(fetch);
                             <!-- Role lain (mahasiswa, tendik) -->
                             <span v-else class="text-slate-300 text-xs">—</span>
                         </td>
+                        <td class="px-5 py-3.5 text-right"><button v-if="['mahasiswa', 'dosen', 'tendik', 'asesor_luar'].includes(item.role)" @click="openEdit(item)" class="rounded-lg border border-[#c8ddd6] px-3 py-1.5 text-xs font-semibold text-[#4a7c6b] hover:bg-[#eaf2ee]">Edit</button><span v-else class="text-xs text-slate-300">—</span></td>
                     </tr>
                 </tbody>
             </table>
         </div>
+
+        <BaseModal :show="modal" title="Edit User" size="lg" @close="modal = false">
+            <div class="space-y-4">
+                <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#3d6355]">Nama Lengkap</label><input v-model="form.namalengkap" class="w-full rounded-xl border border-[#c8ddd6] px-4 py-2.5 text-sm focus:outline-none focus:border-[#4a7c6b]"></div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#3d6355]">Username</label><input v-model="form.username" class="w-full rounded-xl border border-[#c8ddd6] px-4 py-2.5 text-sm focus:outline-none focus:border-[#4a7c6b]"></div>
+                    <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#3d6355]">Password baru</label><input v-model="form.password" type="password" placeholder="Kosongkan jika tidak diubah" class="w-full rounded-xl border border-[#c8ddd6] px-4 py-2.5 text-sm focus:outline-none focus:border-[#4a7c6b]"></div>
+                    <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#3d6355]">Role</label><select v-model="form.role" class="w-full rounded-xl border border-[#c8ddd6] px-4 py-2.5 text-sm"><option v-for="option in roleOptions.filter((item) => item.value)" :key="option.value" :value="option.value">{{ option.label }}</option></select></div>
+                    <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#3d6355]">Unit kerja / prodi</label><select v-model="form.kdunit" class="w-full rounded-xl border border-[#c8ddd6] px-4 py-2.5 text-sm"><option value="">Tanpa unit kerja</option><option v-for="unit in unitList" :key="unit.kdunitkerja" :value="unit.kdunitkerja">{{ unit.unitkerjapendek || unit.unitkerja }}</option></select></div>
+                </div>
+                <label v-if="['dosen', 'asesor_luar'].includes(form.role)" class="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm text-[#1e3329]"><input v-model="form.isAsesor" type="checkbox"> Aktif sebagai asesor</label>
+                <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-600">{{ error }}</div>
+                <div class="flex justify-end gap-2"><button @click="modal = false" class="rounded-lg px-4 py-2 text-xs text-slate-500 hover:bg-slate-100">Batal</button><button @click="submitEdit" :disabled="saving || !form.username || !form.namalengkap || !form.role" class="rounded-lg bg-[#2d4a3e] px-5 py-2 text-xs font-semibold text-white disabled:opacity-50">{{ saving ? 'Menyimpan...' : 'Simpan Perubahan' }}</button></div>
+            </div>
+        </BaseModal>
     </div>
 </template>

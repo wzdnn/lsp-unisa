@@ -36,10 +36,12 @@ Route::middleware(['web', 'auth.session'])->group(function () {
     Route::post('assessments/{assessmentAssignment}/evidences', [AssessmentWorkflowController::class, 'uploadEvidence']);
     Route::delete('assessments/{assessmentAssignment}/evidences/{assessmentEvidence}', [AssessmentWorkflowController::class, 'deleteEvidence']);
     Route::post('assessments/{assessmentAssignment}/submit', [AssessmentWorkflowController::class, 'submit']);
+    Route::post('assessments/{assessmentAssignment}/sign', [AssessmentWorkflowController::class, 'sign']);
     Route::put('assessments/{assessmentAssignment}/review', [AssessmentWorkflowController::class, 'review']);
     Route::put('assessments/{assessmentAssignment}/request-revision', [AssessmentWorkflowController::class, 'requestRevision']);
     Route::put('assessments/{assessmentAssignment}/complete-review', [AssessmentWorkflowController::class, 'completeReview']);
     Route::put('assessments/{assessmentAssignment}/decision', [AssessmentWorkflowController::class, 'decide']);
+    Route::put('assessment-processes/{assessmentProcess}/decision', [AssessmentWorkflowController::class, 'decideProcess']);
 
     Route::get('/dashboard', function () {
         return response()->json([

@@ -43,6 +43,18 @@ class AuthController extends Controller
             return response()->json(['message' => 'Login admin berhasil']);
         }
 
+        // Asesor luar menggunakan akun lokal karena tidak terdaftar pada SSO UNISA.
+        $localAssessor = LspUser::where('username', $username)
+            ->where('role', 'asesor_luar')->first();
+        if ($localAssessor) {
+            if (!$localAssessor->isAsesor || !$localAssessor->password || !Hash::check($password, $localAssessor->password)) {
+                return response()->json(['message' => 'Username atau password asesor tidak sesuai'], 401);
+            }
+
+            session(['user' => ['username' => $localAssessor->username, 'role' => 'asesor_luar']]);
+            return response()->json(['message' => 'Login asesor berhasil']);
+        }
+
         // SSO eksternal
         $response = Http::withoutVerifying()
             ->asForm()

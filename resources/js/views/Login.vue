@@ -36,7 +36,7 @@ const login = async () => {
         const role = auth.user.role;
         if (role === "admin" || role === "superadmin" || role === "tendik") {
             router.push("/admin");
-        } else if (role === "dosen") {
+        } else if (role === "dosen" || role === "asesor_luar") {
             router.push("/dosen");
         } else if (role === "mahasiswa") {
             router.push("/mahasiswa");
