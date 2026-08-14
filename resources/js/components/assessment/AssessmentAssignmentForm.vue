@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { assessmentService, userService } from '../../services/lspService';
+import AssessmentReadOnlyDocument from './AssessmentReadOnlyDocument.vue';
 
 const emit = defineEmits(['toast']);
 const processes = ref([]);
@@ -15,6 +16,10 @@ const assessorFilter = ref('all');
 const schemeFilter = ref('all');
 const page = ref(1);
 const perPage = ref(10);
+const expandedRows = ref([]);
+const preview = ref(null);
+const previewLoading = ref(false);
+const preAssessmentCodes = ['FR.APL.02', 'FR.MAPA.01', 'FR.MAPA.02', 'FR.AK.01', 'FR.AK.07'];
 
 const assessors = computed(() => users.value.filter((user) =>
     user.role === 'asesor_luar' || (user.role === 'dosen' && user.isAsesor)
@@ -34,6 +39,28 @@ const statusClass = (process) => {
     if (apl02(process)?.status === 'revision_required') return 'bg-orange-50 text-orange-700';
     if (['completed', 'assessed', 'result_published'].includes(apl02(process)?.status)) return 'bg-emerald-50 text-emerald-700';
     return 'bg-blue-50 text-blue-700';
+};
+const isExpanded = (id) => expandedRows.value.includes(id);
+const toggleExpanded = (id) => { expandedRows.value = isExpanded(id) ? expandedRows.value.filter((item) => item !== id) : [...expandedRows.value, id]; };
+const preAssessmentForms = (process) => preAssessmentCodes.map((code) => ({
+    code,
+    assignment: process.assignments?.find((item) => item.version?.form?.code === code) || null,
+}));
+const formStatusLabel = (item) => item.assignment ? ({ assigned: 'Ditugaskan', draft: 'Draft', submitted: 'Menunggu review', under_review: 'Sedang dinilai', revision_required: 'Perlu revisi', assessed: 'Sudah dinilai', result_published: 'Hasil terbit', completed: 'Selesai' }[item.assignment.status] || item.assignment.status) : 'Belum tersedia';
+const formStatusClass = (item) => {
+    const value = item.assignment?.status;
+    if (!value) return 'bg-slate-100 text-slate-500';
+    if (value === 'revision_required') return 'bg-orange-50 text-orange-700';
+    if (['completed', 'assessed', 'result_published'].includes(value)) return 'bg-emerald-50 text-emerald-700';
+    if (['submitted', 'under_review'].includes(value)) return 'bg-blue-50 text-blue-700';
+    return 'bg-amber-50 text-amber-700';
+};
+const openPreview = async (assignment) => {
+    if (!assignment) return;
+    previewLoading.value = true;
+    try { preview.value = (await assessmentService.getOne(assignment.id)).data; }
+    catch (error) { emit('toast', { type: 'error', message: error.response?.data?.message || 'Gagal membuka dokumen' }); }
+    finally { previewLoading.value = false; }
 };
 
 const load = async () => {
@@ -128,10 +155,11 @@ onMounted(load);
             <div v-if="loading" class="py-14 text-center text-sm text-slate-400">Memuat proses dari APL.01...</div>
             <div v-else-if="!filtered.length" class="py-14 text-center"><p class="text-sm font-medium text-slate-500">Tidak ada proses pada filter ini.</p><p class="mt-1 text-xs text-slate-400">Coba ubah tab, pencarian, atau filter yang digunakan.</p></div>
             <div v-else class="overflow-x-auto">
-                <table class="min-w-[1280px] w-full divide-y divide-[#e7efeb] text-sm">
-                    <thead class="bg-[#f4f8f6] text-left text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">No.</th><th class="px-4 py-3">Asesi</th><th class="px-4 py-3">Skema / Periode</th><th class="px-4 py-3">Tahap</th><th class="px-4 py-3">Status APL.02</th><th class="px-4 py-3">Asesor</th><th class="px-4 py-3">Tenggat</th><th class="px-4 py-3 text-right">Aksi</th></tr></thead>
+                <table class="min-w-[1360px] w-full divide-y divide-[#e7efeb] text-sm">
+                    <thead class="bg-[#f4f8f6] text-left text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">No.</th><th class="px-4 py-3">Asesi</th><th class="px-4 py-3">Skema / Periode</th><th class="px-4 py-3">Tahap</th><th class="px-4 py-3">Status APL.02</th><th class="px-4 py-3">Asesor</th><th class="px-4 py-3">Tenggat</th><th class="px-4 py-3 text-right">Aksi</th><th class="px-4 py-3 text-right">Detail</th></tr></thead>
                     <tbody class="divide-y divide-[#edf3f0] bg-white">
-                        <tr v-for="(process, index) in paginated" :key="process.id" class="align-top hover:bg-[#f9fbfa]">
+                        <template v-for="(process, index) in paginated" :key="process.id">
+                        <tr class="align-top hover:bg-[#f9fbfa]" :class="isExpanded(process.id) ? 'bg-[#f7faf8]' : ''">
                             <td class="px-4 py-4 text-slate-400">{{ (page - 1) * perPage + index + 1 }}</td>
                             <td class="px-4 py-4"><p class="font-semibold text-[#1e3329]">{{ participantName(process) }}</p><p class="mt-0.5 text-xs text-slate-500">NIM: {{ process.asesi?.username || '-' }} · #{{ process.id }}</p></td>
                             <td class="max-w-60 px-4 py-4"><p class="font-medium text-slate-700">{{ process.periode_skema?.skema?.skema || '-' }}</p><p class="mt-0.5 text-xs text-slate-400">{{ process.periode_skema?.periode?.periode || '-' }}</p></td>
@@ -147,7 +175,10 @@ onMounted(load);
                                 <td class="px-4 py-4 text-xs text-slate-600">{{ apl02(process)?.due_at ? new Date(apl02(process).due_at).toLocaleString('id-ID') : 'Tidak ditentukan' }}</td>
                                 <td class="px-4 py-4 text-right text-xs font-medium text-emerald-700">Sudah ditugaskan</td>
                             </template>
+                            <td class="px-4 py-4 text-right"><button type="button" @click="toggleExpanded(process.id)" class="inline-flex items-center gap-1 text-xs font-semibold text-[#4a7c6b]">{{ isExpanded(process.id) ? 'Tutup' : 'Lihat form' }}<svg class="h-4 w-4 transition-transform" :class="isExpanded(process.id) ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button></td>
                         </tr>
+                        <tr v-if="isExpanded(process.id)" class="bg-[#f7faf8]"><td colspan="9" class="px-5 pb-5 pt-1"><div class="overflow-hidden rounded-xl border border-[#dde8e3] bg-white"><div class="flex flex-wrap items-center justify-between gap-2 border-b border-[#e7efeb] px-4 py-3"><div><p class="text-xs font-bold uppercase tracking-wide text-[#2d4a3e]">Dokumen pra-assessment</p><p class="text-xs text-slate-400">Template published yang menjadi dokumen transaksi peserta.</p></div><span class="text-xs font-semibold text-slate-500">{{ preAssessmentForms(process).filter((item) => item.assignment && ['completed','assessed','result_published'].includes(item.assignment.status)).length }}/5 selesai</span></div><div class="overflow-x-auto"><table class="min-w-full text-xs"><thead class="bg-slate-50 text-left uppercase text-slate-400"><tr><th class="px-4 py-2.5">Form</th><th class="px-4 py-2.5">Nama dokumen</th><th class="px-4 py-2.5">Versi</th><th class="px-4 py-2.5">Pengisi</th><th class="px-4 py-2.5">Status</th><th class="px-4 py-2.5">Tenggat</th><th class="px-4 py-2.5 text-right">Aksi</th></tr></thead><tbody class="divide-y divide-slate-100"><tr v-for="item in preAssessmentForms(process)" :key="item.code"><td class="px-4 py-3 font-bold text-[#1e3329]">{{ item.code }}</td><td class="px-4 py-3 text-slate-600">{{ item.assignment?.version?.form?.name || 'Menunggu template/aktivasi tahap' }}</td><td class="px-4 py-3 text-slate-600">{{ item.assignment ? `v${item.assignment.version?.version}` : '-' }}</td><td class="px-4 py-3 capitalize text-slate-600">{{ item.assignment?.version?.form?.filled_by || '-' }}</td><td class="px-4 py-3"><span class="rounded-full px-2.5 py-1 font-semibold" :class="formStatusClass(item)">{{ formStatusLabel(item) }}</span></td><td class="px-4 py-3 text-slate-500">{{ item.assignment?.due_at ? new Date(item.assignment.due_at).toLocaleString('id-ID') : '-' }}</td><td class="px-4 py-3 text-right"><button v-if="item.assignment" type="button" @click="openPreview(item.assignment)" class="font-semibold text-[#4a7c6b]">Lihat dokumen</button><span v-else class="text-slate-300">Belum tersedia</span></td></tr></tbody></table></div></div></td></tr>
+                        </template>
                     </tbody>
                 </table>
             </div>
@@ -157,5 +188,7 @@ onMounted(load);
             <div class="flex items-center gap-2"><span>Menampilkan {{ rangeStart }}–{{ rangeEnd }} dari {{ filtered.length }}</span><select v-model="perPage" class="rounded-lg border border-[#c8ddd6] px-2 py-1.5 text-xs"><option :value="10">10 / halaman</option><option :value="25">25 / halaman</option><option :value="50">50 / halaman</option></select></div>
             <div class="flex items-center gap-2"><button type="button" :disabled="page === 1" @click="page--" class="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Sebelumnya</button><span>Halaman {{ page }} dari {{ totalPages }}</span><button type="button" :disabled="page === totalPages" @click="page++" class="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Berikutnya</button></div>
         </div>
+
+        <div v-if="preview || previewLoading" class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 sm:p-8" @click.self="preview = null"><div class="w-full max-w-6xl"><div class="mb-3 flex justify-end"><button type="button" @click="preview = null" class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow">Tutup dokumen</button></div><div v-if="previewLoading" class="rounded-xl bg-white p-16 text-center text-sm text-slate-400">Memuat dokumen...</div><div v-else class="overflow-x-auto pb-8"><AssessmentReadOnlyDocument :assignment="preview" /></div></div></div>
     </div>
 </template>

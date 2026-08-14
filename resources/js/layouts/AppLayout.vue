@@ -250,11 +250,11 @@ const activeNavLabel = computed(() => {
             </div>
 
             <!-- Nav Items -->
-            <nav class="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
+            <nav class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto py-3 px-2 space-y-0.5">
                 <div
                     v-for="item in navItems"
                     :key="item.to"
-                    class="space-y-0.5"
+                    class="min-w-0 space-y-0.5"
                 >
                     <router-link
                         :to="item.to"

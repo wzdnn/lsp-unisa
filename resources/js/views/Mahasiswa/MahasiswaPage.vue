@@ -5,6 +5,7 @@ import AppLayout from "../../layouts/AppLayout.vue";
 import {
     plottingService,
     apl01PengajuanService,
+    assessmentService,
 } from "../../services/lspService";
 import BaseModal from "../../components/BaseModal.vue";
 
@@ -15,6 +16,8 @@ const error = ref("");
 const confirmModal = ref(false);
 const selectedItem = ref(null);
 const myPengajuanSkemaIds = ref(new Set());
+const myApplications = ref([]);
+const assessmentAssignments = ref([]);
 
 const fetchSkemaTersedia = async () => {
     loading.value = true;
@@ -94,8 +97,9 @@ const confirmPilihSkema = () => {
 const fetchMyPengajuan = async () => {
     try {
         const res = await apl01PengajuanService.getAll();
+        myApplications.value = Array.isArray(res.data) ? res.data : [];
         myPengajuanSkemaIds.value = new Set(
-            (Array.isArray(res.data) ? res.data : []).map(
+            myApplications.value.map(
                 (p) => p.kdlsp_periode_skema,
             ),
         );
@@ -104,9 +108,30 @@ const fetchMyPengajuan = async () => {
     }
 };
 
+const fetchAssessmentTasks = async () => {
+    try {
+        assessmentAssignments.value = (await assessmentService.getAll()).data || [];
+    } catch {
+        assessmentAssignments.value = [];
+    }
+};
+
+const actionableTasks = computed(() => assessmentAssignments.value.filter((item) =>
+    ['assigned', 'draft', 'revision_required'].includes(item.status)
+));
+const waitingApplications = computed(() => myApplications.value.filter((item) =>
+    item.status === 'diterima' && !assessmentAssignments.value.some((assignment) =>
+        assignment.process?.kdlsp_apl01_pengajuan === item.kdlsp_apl01_pengajuan
+            || assignment.process?.kdlsp_periode_skema === item.kdlsp_periode_skema
+    )
+));
+const taskStageLabel = (stage) => ({ pra_asesmen: 'Pra-Assessment', asesmen: 'Assessment', pasca_asesmen: 'Post-Assessment' }[stage] || stage?.replaceAll('_', ' ') || 'Assessment');
+const taskStatusLabel = (status) => ({ assigned: 'Belum dikerjakan', draft: 'Draft tersimpan', revision_required: 'Perlu revisi' }[status] || status);
+
 onMounted(() => {
     fetchSkemaTersedia();
     fetchMyPengajuan();
+    fetchAssessmentTasks();
 });
 </script>
 
@@ -120,6 +145,14 @@ onMounted(() => {
                 Pilih skema sertifikasi yang tersedia pada periode aktif.
             </p>
         </div>
+
+        <section v-if="actionableTasks.length || waitingApplications.length" class="mb-6 rounded-2xl border border-[#c8ddd6] bg-white p-5 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-wide text-[#7aab95]">Tahap selanjutnya</p><h3 class="mt-1 text-lg font-bold text-[#1e3329]">Proses Sertifikasi Saya</h3><p class="mt-1 text-sm text-slate-500">Selesaikan dokumen yang muncul agar proses dapat berlanjut ke tahap berikutnya.</p></div><router-link v-if="actionableTasks.length" to="/assessments/active" class="rounded-lg bg-[#2d4a3e] px-4 py-2.5 text-sm font-semibold text-white">Buka Assessment Saya</router-link></div>
+
+            <div v-if="actionableTasks.length" class="mt-5 grid gap-3 lg:grid-cols-2"><article v-for="task in actionableTasks" :key="task.id" class="rounded-xl border p-4" :class="task.status === 'revision_required' ? 'border-amber-200 bg-amber-50' : 'border-[#dde8e3] bg-[#f9fbfa]' "><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase text-[#7aab95]">{{ taskStageLabel(task.version?.form?.stage) }}</p><h4 class="mt-1 font-bold text-[#1e3329]">{{ task.version?.form?.code }} - {{ task.version?.form?.name }}</h4><p class="mt-1 text-xs text-slate-500">{{ task.process?.periode_skema?.skema?.skema || 'Skema sertifikasi' }}</p></div><span class="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold" :class="task.status === 'revision_required' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700'">{{ taskStatusLabel(task.status) }}</span></div><p v-if="task.revision_notes" class="mt-3 rounded-lg bg-white/70 p-2 text-xs text-amber-700">Catatan asesor: {{ task.revision_notes }}</p><router-link :to="task.status === 'revision_required' ? '/assessments/revision' : '/assessments/active'" class="mt-4 inline-flex text-sm font-semibold text-[#4a7c6b]">{{ task.status === 'revision_required' ? 'Perbaiki dokumen' : 'Isi dokumen sekarang' }} →</router-link></article></div>
+
+            <div v-if="waitingApplications.length" class="mt-4 space-y-2"><div v-for="application in waitingApplications" :key="application.kdlsp_apl01_pengajuan" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"><div><p class="font-semibold text-amber-800">FR.APL.01 telah diterima</p><p class="mt-1 text-xs text-amber-700">Menunggu admin menetapkan asesor dan menerbitkan FR.APL.02.</p></div><span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-700">Menunggu penugasan</span></div></div>
+        </section>
 
         <div
             v-if="loading"

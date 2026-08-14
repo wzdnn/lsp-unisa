@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth';
 import { assessmentService } from '../services/lspService';
 import DOMPurify from 'dompurify';
 import AssessmentInstrumentTable from '../components/assessment/AssessmentInstrumentTable.vue';
+import Apl02AssessmentTable from '../components/assessment/Apl02AssessmentTable.vue';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -210,7 +211,8 @@ watch([() => props.view, () => route.query.process], () => { selected.value = nu
                     <div v-if="selected.version.form.description" class="rich-content mt-3 text-sm text-slate-500" v-html="safeHtml(selected.version.form.description)"></div>
                 </div>
 
-                <AssessmentInstrumentTable v-if="isMukAssessmentForm" :key="selected.id" :assignment="selected" :answers="answers" :editable="canEdit" :can-sign="canSign" @sign="sign" @upload="upload" />
+                <Apl02AssessmentTable v-if="isApl02" :key="selected.id" :assignment="selected" :answers="answers" :editable="canEdit" :can-sign="canSign" @sign="sign" @upload="upload" />
+                <AssessmentInstrumentTable v-else-if="isMukAssessmentForm" :key="selected.id" :assignment="selected" :answers="answers" :editable="canEdit" :can-sign="canSign" @sign="sign" @upload="upload" />
                 <template v-else><div v-for="section in selected.version.sections" :key="section.id" class="bg-white border border-[#dde8e3] rounded-2xl p-5">
                     <h4 class="font-bold text-[#1e3329]">{{ section.title }}</h4>
                     <p v-if="section.description" class="text-sm text-slate-500 mt-1">{{ section.description }}</p>
