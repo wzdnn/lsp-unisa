@@ -4,6 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import AppLayout from "../../layouts/AppLayout.vue";
 import BaseToast from "../../components/BaseToast.vue";
 import TabApl01Pengajuan from "../../components/lsp/TabApl01Pengajuan.vue";
+import AdminAssessmentProcessMonitor from "../../components/assessment/AdminAssessmentProcessMonitor.vue";
+import AssessmentAssignmentForm from "../../components/assessment/AssessmentAssignmentForm.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -109,36 +111,16 @@ const showToast = ({ message, type = "success" }) => {
                     @toast="showToast"
                 />
 
-                <div
+                <AssessmentAssignmentForm
+                    v-else-if="activeStage === 'pre-assesment'"
+                    @toast="showToast"
+                />
+
+                <AdminAssessmentProcessMonitor
                     v-else
-                    class="min-h-[320px] flex items-center justify-center rounded-xl border border-dashed border-[#c8ddd6] bg-[#f9fbfa]"
-                >
-                    <div class="text-center px-6">
-                        <div
-                            class="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-[#eaf2ee] text-[#2d4a3e]"
-                        >
-                            <svg
-                                class="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="1.5"
-                                    :d="activeTab.icon"
-                                />
-                            </svg>
-                        </div>
-                        <h3 class="text-sm font-bold text-[#1e3329]">
-                            {{ activeTab.label }}
-                        </h3>
-                        <p class="text-sm text-[#7aab95] mt-1">
-                            Belum tersedia
-                        </p>
-                    </div>
-                </div>
+                    :stage="activeStage"
+                    @toast="showToast"
+                />
             </div>
         </div>
 

@@ -136,7 +136,6 @@ const navItems = computed(() => {
             children: [
                 { label: "Template Tersimpan", to: "/admin/assessment-forms" },
                 { label: "Buat Template", to: "/admin/assessment-forms/create" },
-                { label: "Proses & Penugasan", to: "/admin/assessment-forms/assignments" },
             ],
         },
         {

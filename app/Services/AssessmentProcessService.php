@@ -105,6 +105,15 @@ class AssessmentProcessService
             })
             ->get();
 
+        $requiredCodes = collect(self::AUTO_FORMS[$stage]);
+        $availableCodes = $versions->pluck('form.code');
+        $missingCodes = $requiredCodes->diff($availableCodes)->values();
+        if ($missingCodes->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'templates' => 'Workflow tidak dapat dilanjutkan. Template published belum lengkap: '.$missingCodes->implode(', '),
+            ]);
+        }
+
         DB::transaction(function () use ($process, $stage, $dueAt, $versions) {
             $process->update(['current_stage' => $stage]);
 

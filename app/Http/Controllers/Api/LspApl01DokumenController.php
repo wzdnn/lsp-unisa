@@ -26,7 +26,7 @@ class LspApl01DokumenController extends Controller
     public function store(Request $request, $kdlsp_apl01_pengajuan)
     {
         $pengajuan = LspApl01Pengajuan::findOrFail($kdlsp_apl01_pengajuan);
-        $this->authorizeAccess($pengajuan);
+        $this->authorizeAccess($pengajuan, true);
 
         if (in_array($pengajuan->status, ['menunggu_review', 'diterima', 'ditolak'])) {
             return response()->json(['message' => 'Pengajuan tidak dapat diubah'], 422);
@@ -61,7 +61,7 @@ class LspApl01DokumenController extends Controller
     public function destroy($kdlsp_apl01_pengajuan, $kdlsp_apl01_dokumen)
     {
         $pengajuan = LspApl01Pengajuan::findOrFail($kdlsp_apl01_pengajuan);
-        $this->authorizeAccess($pengajuan);
+        $this->authorizeAccess($pengajuan, true);
 
         $dokumen = LspApl01Dokumen::where('kdlsp_apl01_pengajuan', $kdlsp_apl01_pengajuan)
             ->findOrFail($kdlsp_apl01_dokumen);
@@ -72,9 +72,10 @@ class LspApl01DokumenController extends Controller
         return response()->json(['message' => 'Dokumen dihapus']);
     }
 
-    private function authorizeAccess(LspApl01Pengajuan $pengajuan): void
+    private function authorizeAccess(LspApl01Pengajuan $pengajuan, bool $mutating = false): void
     {
-        if (session('user.role') === 'mahasiswa') {
+        $role = session('user.role');
+        if ($role === 'mahasiswa') {
             $user = LspUser::where('username', session('user.username'))->firstOrFail();
             if ($pengajuan->kdlsp_user !== $user->kdlsp_user) {
                 abort(403, 'Bukan milik Anda');
@@ -82,7 +83,25 @@ class LspApl01DokumenController extends Controller
             if (!$this->cekPembayaran($pengajuan->kdlsp_apl01_pengajuan)) {
                 abort(422, 'Pembayaran belum diterima');
             }
+
+            return;
         }
+
+        if (in_array($role, ['admin', 'superadmin', 'tendik'])) {
+            abort_if($mutating, 403, 'Admin hanya dapat memverifikasi dokumen; berkas asli hanya dapat diubah oleh asesi');
+            return;
+        }
+
+        if (in_array($role, ['dosen', 'asesor_luar']) && !$mutating) {
+            $user = LspUser::where('username', session('user.username'))->firstOrFail();
+            $isAssigned = $pengajuan->assessmentProcess()
+                ->where('assessor_id', $user->kdlsp_user)
+                ->exists();
+            abort_unless($isAssigned, 403, 'Anda bukan asesor yang ditugaskan untuk pengajuan ini');
+            return;
+        }
+
+        abort(403, 'Anda tidak berhak mengakses dokumen pengajuan ini');
     }
 
     public function updateStatus(Request $request, $kdlsp_apl01_pengajuan, $kdlsp_apl01_dokumen)

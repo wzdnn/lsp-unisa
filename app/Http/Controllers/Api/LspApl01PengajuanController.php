@@ -7,6 +7,7 @@ use App\Models\LspApl01Pengajuan;
 use App\Models\LspDocumentSignature;
 use App\Models\LspUser;
 use App\Models\LspUserSignature;
+use App\Models\LspPeriodeSkema;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Traits\ChecksLspPayment;
@@ -172,12 +173,7 @@ class LspApl01PengajuanController extends Controller
             'documentSignatures',
         ])->findOrFail($kdlsp_apl01_pengajuan);
 
-        if (
-            session('user.role') === 'mahasiswa' &&
-            $pengajuan->kdlsp_user !== $this->currentLspUser()->kdlsp_user
-        ) {
-            abort(403, 'Pengajuan ini bukan milik Anda');
-        }
+        $this->authorizeView($pengajuan);
 
         return response()->json($pengajuan);
     }
@@ -219,6 +215,8 @@ class LspApl01PengajuanController extends Controller
         $request->validate([
             'kdlsp_periode_skema' => 'required|exists:lsp_periode_skema,kdlsp_periode_skema',
         ]);
+
+        $this->validateRegistrationWindow((int) $request->kdlsp_periode_skema);
 
         $user = $this->currentLspUser();
 
@@ -273,6 +271,42 @@ class LspApl01PengajuanController extends Controller
             ->where('is_active', true)
             ->latest('kdlsp_user_signature')
             ->first();
+    }
+
+    private function validateRegistrationWindow(int $periodSchemeId): void
+    {
+        $plot = LspPeriodeSkema::with(['masaPeriode', 'skema'])->findOrFail($periodSchemeId);
+        $masa = $plot->masaPeriode;
+
+        abort_unless($plot->skema?->isActive, 422, 'Skema sertifikasi sudah tidak aktif');
+        abort_unless($masa?->isActive, 422, 'Masa pendaftaran sudah tidak aktif');
+        abort_if($masa->tanggal_mulai && today()->lt($masa->tanggal_mulai), 422, 'Masa pendaftaran belum dimulai');
+        abort_if($masa->tanggal_selesai && today()->gt($masa->tanggal_selesai), 422, 'Masa pendaftaran sudah berakhir');
+    }
+
+    private function authorizeView(LspApl01Pengajuan $pengajuan): void
+    {
+        $role = session('user.role');
+        if (in_array($role, ['admin', 'superadmin', 'tendik'])) {
+            return;
+        }
+
+        $user = $this->currentLspUser();
+        if ($role === 'mahasiswa') {
+            abort_unless($pengajuan->kdlsp_user === $user->kdlsp_user, 403, 'Pengajuan ini bukan milik Anda');
+            return;
+        }
+
+        if (in_array($role, ['dosen', 'asesor_luar'])) {
+            abort_unless(
+                $pengajuan->assessmentProcess()->where('assessor_id', $user->kdlsp_user)->exists(),
+                403,
+                'Anda bukan asesor yang ditugaskan untuk pengajuan ini'
+            );
+            return;
+        }
+
+        abort(403);
     }
 
     private function recordApl01ApplicantSignature(

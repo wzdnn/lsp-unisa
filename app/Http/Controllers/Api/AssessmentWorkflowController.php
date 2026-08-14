@@ -196,14 +196,16 @@ class AssessmentWorkflowController extends Controller
         })->pluck('question_id');
         abort_if($required->diff($answered)->isNotEmpty(), 422, 'Masih ada pertanyaan wajib yang belum dijawab');
         $assessorOwned = $assessmentAssignment->version->form->filled_by === 'asesor';
-        $assessmentAssignment->update([
-            'status' => $assessorOwned ? 'completed' : 'submitted',
-            'submitted_at' => now(),
-            'completed_at' => $assessorOwned ? now() : null,
-        ]);
-        if ($assessorOwned) {
-            app(AssessmentProcessService::class)->syncAfterCompletion($assessmentAssignment);
-        }
+        DB::transaction(function () use ($assessmentAssignment, $assessorOwned) {
+            $assessmentAssignment->update([
+                'status' => $assessorOwned ? 'completed' : 'submitted',
+                'submitted_at' => now(),
+                'completed_at' => $assessorOwned ? now() : null,
+            ]);
+            if ($assessorOwned) {
+                app(AssessmentProcessService::class)->syncAfterCompletion($assessmentAssignment);
+            }
+        });
         return $assessmentAssignment->fresh()->load($this->relations());
     }
 
@@ -293,15 +295,15 @@ class AssessmentWorkflowController extends Controller
 
         abort_if($reviewableIds->diff($reviewedIds)->isNotEmpty(), 422, 'Semua pertanyaan harus dinilai sebelum review diselesaikan');
 
-        DB::transaction(function () use ($assessmentAssignment) {
+        DB::transaction(function () use ($assessmentAssignment, $service) {
             $assessmentAssignment->update([
                 'status' => 'completed',
                 'reviewed_at' => now(),
                 'completed_at' => now(),
                 'revision_notes' => null,
             ]);
+            $service->syncAfterCompletion($assessmentAssignment);
         });
-        $service->syncAfterCompletion($assessmentAssignment);
 
         return $assessmentAssignment->fresh()->load($this->relations());
     }
@@ -328,9 +330,23 @@ class AssessmentWorkflowController extends Controller
         abort_unless($assessmentProcess->current_stage === 'keputusan', 422, 'Seluruh form wajib belum selesai');
         $data = $request->validate([
             'result' => 'required|in:competent,not_competent',
-            'notes' => 'nullable|string|max:10000',
+            'notes' => 'required_if:result,not_competent|nullable|string|max:10000',
             'publish' => 'sometimes|boolean',
         ]);
+
+        $assessmentProcess->load('assignments.reviews');
+        $unfinished = $assessmentProcess->assignments->contains(
+            fn ($assignment) => !in_array($assignment->status, ['completed', 'assessed', 'result_published'])
+        );
+        abort_if($unfinished, 422, 'Masih ada form assessment yang belum diselesaikan');
+
+        $blockingReviews = $assessmentProcess->assignments->flatMap->reviews
+            ->whereIn('result', ['not_achieved', 'needs_follow_up']);
+        abort_if(
+            $data['result'] === 'competent' && $blockingReviews->isNotEmpty(),
+            422,
+            'Keputusan Kompeten tidak dapat diberikan karena masih ada KUK belum tercapai atau memerlukan tindak lanjut'
+        );
 
         $assessmentProcess->update([
             'final_result' => $data['result'],
@@ -348,7 +364,8 @@ class AssessmentWorkflowController extends Controller
     private function relations(): array
     {
         return ['version.form', 'version.sections.questions', 'process.asesi.person', 'process.assessor.person',
-            'process.periodeSkema.skema', 'answers.evidences', 'answers.question', 'reviews', 'decision'];
+            'process.periodeSkema.skema', 'process.periodeSkema.periode', 'process.periodeSkema.masaPeriode',
+            'answers.evidences', 'answers.question', 'reviews', 'decision'];
     }
 
     private function currentUser(): LspUser

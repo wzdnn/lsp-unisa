@@ -152,10 +152,14 @@ class AssessmentMvpWorkflowTest extends TestCase
             ->putJson("/api/assessments/{$assignmentId}/review", $review)->assertOk();
         $this->withSession(['user' => ['username' => $assessor->username, 'role' => 'dosen']])
             ->putJson("/api/assessments/{$assignmentId}/complete-review")
-            ->assertOk()->assertJsonPath('status', 'completed');
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('templates');
 
+        $this->assertDatabaseHas('lsp_assessment_assignments', [
+            'id' => $assignmentId, 'status' => 'under_review',
+        ]);
         $this->assertDatabaseHas('lsp_assessment_processes', [
-            'id' => $process->id, 'assessor_id' => $assessor->kdlsp_user, 'current_stage' => 'asesmen',
+            'id' => $process->id, 'assessor_id' => $assessor->kdlsp_user, 'current_stage' => 'pra_asesmen',
         ]);
     }
 
@@ -235,6 +239,63 @@ class AssessmentMvpWorkflowTest extends TestCase
         $this->assertDatabaseHas('lsp_assessment_answers', [
             'assignment_id' => $assignment->id, 'question_id' => $question->id, 'answer_text' => 'ya',
         ]);
+    }
+
+    public function test_competent_decision_is_rejected_when_a_review_is_not_achieved(): void
+    {
+        $asesi = LspUser::create(['username' => 'asesi-decision', 'role' => 'mahasiswa']);
+        $assessor = LspUser::create(['username' => 'asesor-decision', 'role' => 'dosen', 'isAsesor' => true]);
+        $process = AssessmentProcess::create([
+            'kdlsp_periode_skema' => 101, 'asesi_id' => $asesi->kdlsp_user,
+            'assessor_id' => $assessor->kdlsp_user, 'current_stage' => 'keputusan',
+            'status' => 'active', 'started_at' => now(),
+        ]);
+        $form = AssessmentForm::create([
+            'code' => 'FR.TEST.DECISION', 'name' => 'Uji Keputusan', 'stage' => 'asesmen',
+            'filled_by' => 'asesi', 'reviewed_by' => 'asesor',
+        ]);
+        $version = $form->versions()->create(['version' => 1, 'status' => 'published']);
+        $section = $version->sections()->create(['title' => 'KUK', 'sort_order' => 0]);
+        $question = $section->questions()->create([
+            'code' => 'KUK-DECISION', 'type' => 'self_assessment', 'label' => 'Kriteria uji',
+            'is_required' => true, 'sort_order' => 0,
+        ]);
+        $assignment = $process->assignments()->create([
+            'form_version_id' => $version->id, 'assigned_to' => $asesi->kdlsp_user,
+            'assignee_role' => 'asesi', 'status' => 'completed', 'completed_at' => now(),
+        ]);
+        $assignment->reviews()->create([
+            'question_id' => $question->id, 'assessor_id' => $assessor->kdlsp_user,
+            'result' => 'not_achieved', 'reviewed_at' => now(),
+        ]);
+
+        $this->withSession(['user' => ['username' => $assessor->username, 'role' => 'dosen']])
+            ->putJson("/api/assessment-processes/{$process->id}/decision", [
+                'result' => 'competent', 'notes' => 'Dicoba kompeten', 'publish' => true,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Keputusan Kompeten tidak dapat diberikan karena masih ada KUK belum tercapai atau memerlukan tindak lanjut');
+
+        $this->assertNull($process->fresh()->final_result);
+    }
+
+    public function test_admin_and_unassigned_assessor_cannot_mutate_or_read_foreign_apl01_documents(): void
+    {
+        $asesi = LspUser::create(['username' => 'asesi-document', 'role' => 'mahasiswa']);
+        $otherAssessor = LspUser::create(['username' => 'other-assessor', 'role' => 'dosen', 'isAsesor' => true]);
+        $application = LspApl01Pengajuan::create([
+            'kdlsp_user' => $asesi->kdlsp_user,
+            'kdlsp_periode_skema' => 102,
+            'status' => 'draft',
+        ]);
+
+        $this->withSession(['user' => ['username' => 'admin1', 'role' => 'admin']])
+            ->postJson("/api/apl01-pengajuan/{$application->kdlsp_apl01_pengajuan}/dokumen", [])
+            ->assertForbidden();
+
+        $this->withSession(['user' => ['username' => $otherAssessor->username, 'role' => 'dosen']])
+            ->getJson("/api/apl01-pengajuan/{$application->kdlsp_apl01_pengajuan}/dokumen")
+            ->assertForbidden();
     }
 
     private function completeCurrentStage(AssessmentProcess $process, string $stage, AssessmentProcessService $service): void

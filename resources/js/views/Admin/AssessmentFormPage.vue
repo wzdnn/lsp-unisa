@@ -4,13 +4,11 @@ import AppLayout from '../../layouts/AppLayout.vue';
 import BaseToast from '../../components/BaseToast.vue';
 import AssessmentTemplateList from '../../components/assessment/AssessmentTemplateList.vue';
 import AssessmentTemplateCreate from '../../components/assessment/AssessmentTemplateCreate.vue';
-import AssessmentAssignmentForm from '../../components/assessment/AssessmentAssignmentForm.vue';
 
 const props = defineProps({ mode: { type: String, default: 'list' } });
 const page = {
     list: { title: 'Template Tersimpan', description: 'Daftar template dan versi form assessment.' },
     create: { title: 'Buat Template Dinamis', description: 'Susun form pra-asesmen, asesmen, atau pasca-asesmen dengan Tiptap.' },
-    assignments: { title: 'Penugasan Assessment', description: 'Tugaskan form yang sudah dipublikasikan kepada asesi dan asesor.' },
 };
 
 const toast = ref({ show: false, message: '', type: 'success' });
@@ -29,8 +27,7 @@ const showToast = ({ message, type = 'success' }) => {
         </div>
         <div class="bg-white rounded-2xl border border-[#dde8e3] p-6 shadow-sm">
             <AssessmentTemplateList v-if="props.mode === 'list'" @toast="showToast" />
-            <AssessmentTemplateCreate v-else-if="props.mode === 'create'" @toast="showToast" />
-            <AssessmentAssignmentForm v-else @toast="showToast" />
+            <AssessmentTemplateCreate v-else @toast="showToast" />
         </div>
         <BaseToast :show="toast.show" :message="toast.message" :type="toast.type" />
     </AppLayout>

@@ -54,9 +54,7 @@ const routes = [
     },
     {
         path: "/admin/assessment-forms/assignments",
-        component: AssessmentFormPage,
-        props: { mode: "assignments" },
-        meta: { role: ["admin", "superadmin", "tendik"] },
+        redirect: "/admin/assesment/pre-assesment",
     },
     {
         path: "/dosen",
