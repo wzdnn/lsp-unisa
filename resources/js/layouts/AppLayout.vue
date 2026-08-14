@@ -1,14 +1,64 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
-import api from "../services/api";
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 
-const collapsed = ref(false);
+const collapsed = ref(localStorage.getItem("sidebar-collapsed") === "true");
+const mobileSidebarOpen = ref(false);
+const profileOpen = ref(false);
+const logoutModalOpen = ref(false);
+const loggingOut = ref(false);
+const expandedMenus = ref(new Set());
+
+const profileName = computed(() =>
+    auth.user?.lsp_user?.person?.namalengkap ||
+    auth.user?.lsp_user?.namalengkap ||
+    auth.user?.username ||
+    "Pengguna",
+);
+
+const roleLabel = computed(() => ({
+    superadmin: "Super Admin",
+    admin: "Admin",
+    tendik: "Tenaga Kependidikan",
+    dosen: "Dosen / Asesor",
+    asesor_luar: "Asesor Eksternal",
+    mahasiswa: "Mahasiswa",
+}[auth.user?.role] || auth.user?.role || "Pengguna"));
+
+const profileInitial = computed(() => profileName.value.charAt(0).toUpperCase());
+
+const toggleSidebar = () => {
+    if (window.innerWidth < 768) {
+        if (!mobileSidebarOpen.value && collapsed.value) {
+            collapsed.value = false;
+            localStorage.setItem("sidebar-collapsed", "false");
+        }
+        mobileSidebarOpen.value = !mobileSidebarOpen.value;
+        return;
+    }
+
+    collapsed.value = !collapsed.value;
+    localStorage.setItem("sidebar-collapsed", String(collapsed.value));
+};
+
+const closeOverlays = () => {
+    mobileSidebarOpen.value = false;
+    profileOpen.value = false;
+};
+
+const handleEscape = (event) => {
+    if (event.key !== "Escape") return;
+    if (logoutModalOpen.value && !loggingOut.value) logoutModalOpen.value = false;
+    else closeOverlays();
+};
+
+onMounted(() => window.addEventListener("keydown", handleEscape));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleEscape));
 
 const navItems = computed(() => {
     if (auth.user?.role === "mahasiswa") {
@@ -98,13 +148,16 @@ const navItems = computed(() => {
 });
 
 const logout = async () => {
+    if (loggingOut.value) return;
+    loggingOut.value = true;
+
     try {
-        await api.post("/logout");
-    } catch (e) {
-        console.error("Logout error:", e);
+        await auth.logout();
+        logoutModalOpen.value = false;
+        profileOpen.value = false;
+        await router.replace("/");
     } finally {
-        auth.clearUser();
-        router.push("/");
+        loggingOut.value = false;
     }
 };
 
@@ -114,6 +167,26 @@ const isActive = (item) =>
         (path) => route.path === path || route.path.startsWith(`${path}/`),
     ) ||
     item.children?.some((child) => isActive(child));
+
+for (const item of navItems.value) {
+    if (item.children?.length && isActive(item)) {
+        expandedMenus.value.add(item.to);
+    }
+}
+
+const isMenuExpanded = (item) => expandedMenus.value.has(item.to);
+
+const handleMenuClick = (item) => {
+    if (!item.children?.length) {
+        mobileSidebarOpen.value = false;
+        return;
+    }
+
+    const nextExpanded = new Set(expandedMenus.value);
+    if (nextExpanded.has(item.to)) nextExpanded.delete(item.to);
+    else nextExpanded.add(item.to);
+    expandedMenus.value = nextExpanded;
+};
 
 const activeNavLabel = computed(() => {
     for (const item of navItems.value) {
@@ -127,10 +200,23 @@ const activeNavLabel = computed(() => {
 
 <template>
     <div class="flex h-screen bg-[#f0f4f1] overflow-hidden">
+        <Transition name="fade">
+            <button
+                v-if="mobileSidebarOpen"
+                type="button"
+                aria-label="Tutup sidebar"
+                class="fixed inset-0 z-30 bg-slate-950/45 md:hidden"
+                @click="mobileSidebarOpen = false"
+            ></button>
+        </Transition>
+
         <!-- Sidebar -->
         <aside
-            :class="collapsed ? 'w-16' : 'w-64'"
-            class="flex flex-col bg-[#1e3329] transition-all duration-300 ease-in-out shrink-0"
+            :class="[
+                collapsed ? 'md:w-16' : 'md:w-64',
+                mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+            ]"
+            class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-[#1e3329] shadow-xl transition-all duration-300 ease-in-out shrink-0 md:relative md:shadow-none"
         >
             <!-- Logo -->
             <div
@@ -174,6 +260,7 @@ const activeNavLabel = computed(() => {
                     <router-link
                         :to="item.to"
                         :title="collapsed ? item.label : ''"
+                        :aria-expanded="item.children?.length ? isMenuExpanded(item) : undefined"
                         :class="[
                             isActive(item)
                                 ? 'bg-[#4a7c6b] text-white'
@@ -181,6 +268,7 @@ const activeNavLabel = computed(() => {
                             collapsed ? 'justify-center px-0' : 'px-3',
                         ]"
                         class="flex items-center gap-3 h-10 rounded-lg transition-all duration-150 group relative"
+                        @click="handleMenuClick(item)"
                     >
                         <svg
                             class="w-4.5 h-4.5 shrink-0"
@@ -205,9 +293,21 @@ const activeNavLabel = computed(() => {
                             {{ item.label }}
                         </span>
 
+                        <!-- Expand indicator -->
+                        <svg
+                            v-if="item.children?.length && !collapsed"
+                            :class="isMenuExpanded(item) ? 'rotate-180' : ''"
+                            class="ml-auto h-4 w-4 shrink-0 transition-transform duration-200"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7" />
+                        </svg>
+
                         <!-- Active indicator -->
                         <div
-                            v-if="isActive(item) && !collapsed"
+                            v-if="isActive(item) && !item.children?.length && !collapsed"
                             class="absolute right-2 w-1.5 h-1.5 rounded-full bg-[#a8d5c2]"
                         ></div>
 
@@ -221,7 +321,7 @@ const activeNavLabel = computed(() => {
                     </router-link>
 
                     <div
-                        v-if="item.children?.length && !collapsed"
+                        v-if="item.children?.length && !collapsed && isMenuExpanded(item)"
                         class="ml-5 pl-3 border-l border-[#2d4a3e] space-y-0.5"
                     >
                         <router-link
@@ -234,6 +334,7 @@ const activeNavLabel = computed(() => {
                                     : 'text-[#8fb2a4] hover:bg-[#2d4a3e] hover:text-white'
                             "
                             class="flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-medium transition-all"
+                            @click="mobileSidebarOpen = false"
                         >
                             <span
                                 :class="
@@ -250,17 +351,23 @@ const activeNavLabel = computed(() => {
             </nav>
 
             <!-- User & Logout -->
-            <div class="border-t border-[#2d4a3e] p-2 space-y-1">
+            <div
+                :class="collapsed ? 'flex-col gap-1' : 'flex-row items-center gap-1'"
+                class="flex border-t border-[#2d4a3e] p-2"
+            >
                 <!-- User info -->
-                <div
-                    :class="collapsed ? 'justify-center px-0' : 'px-3'"
-                    class="flex items-center gap-3 h-12 overflow-hidden"
+                <button
+                    type="button"
+                    @click="profileOpen = true"
+                    :title="collapsed ? 'Lihat profil' : ''"
+                    :class="collapsed ? 'justify-center px-0' : 'min-w-0 flex-1 px-3'"
+                    class="group relative flex items-center gap-3 h-12 overflow-hidden rounded-lg text-left hover:bg-[#2d4a3e] transition-colors"
                 >
                     <div
                         class="w-7 h-7 rounded-full bg-[#4a7c6b] flex items-center justify-center text-white text-xs font-bold shrink-0"
                     >
                         {{
-                            auth.user?.username?.charAt(0)?.toUpperCase() || "A"
+                            profileInitial
                         }}
                     </div>
                     <div
@@ -270,24 +377,30 @@ const activeNavLabel = computed(() => {
                         <p
                             class="text-sm text-white font-medium truncate leading-tight"
                         >
-                            {{ auth.user?.username || "Admin" }}
+                            {{ profileName }}
                         </p>
                         <p class="text-xs text-[#7aab95] truncate capitalize">
-                            {{ auth.user?.role || "admin" }}
+                            {{ roleLabel }}
                         </p>
                     </div>
-                </div>
+                    <div
+                        v-if="collapsed"
+                        class="absolute left-full ml-3 px-2.5 py-1.5 bg-[#1e3329] border border-[#2d4a3e] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50"
+                    >
+                        Lihat profil
+                    </div>
+                </button>
 
                 <!-- Logout Button -->
                 <button
-                    @click="logout"
-                    :title="collapsed ? 'Logout' : ''"
-                    :class="collapsed ? 'justify-center px-0' : 'px-3'"
-                    class="w-full flex items-center gap-3 h-9 rounded-lg text-[#a8c5b8] hover:bg-red-900/30 hover:text-red-300 transition-all duration-150 group relative"
+                    @click="logoutModalOpen = true"
+                    type="button"
+                    title="Logout"
+                    aria-label="Logout"
+                    class="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#a8c5b8] hover:bg-red-900/30 hover:text-red-300 transition-all duration-150"
                 >
                     <svg
-                        style="width: 18px; height: 18px"
-                        class="shrink-0"
+                        class="h-[18px] w-[18px]"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -299,14 +412,7 @@ const activeNavLabel = computed(() => {
                             d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                         />
                     </svg>
-                    <span
-                        :class="collapsed ? 'opacity-0 w-0' : 'opacity-100'"
-                        class="text-sm whitespace-nowrap overflow-hidden transition-all duration-300"
-                    >
-                        Logout
-                    </span>
                     <div
-                        v-if="collapsed"
                         class="absolute left-full ml-3 px-2.5 py-1.5 bg-[#1e3329] border border-[#2d4a3e] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50"
                     >
                         Logout
@@ -322,7 +428,10 @@ const activeNavLabel = computed(() => {
                 class="flex items-center h-16 px-5 bg-white border-b border-[#dde8e3] shrink-0"
             >
                 <button
-                    @click="collapsed = !collapsed"
+                    @click="toggleSidebar"
+                    type="button"
+                    :aria-label="collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'"
+                    :aria-expanded="!collapsed"
                     class="w-8 h-8 flex items-center justify-center rounded-lg text-[#4a7c6b] hover:bg-[#eaf2ee] transition-all duration-150"
                 >
                     <svg
@@ -374,11 +483,32 @@ const activeNavLabel = computed(() => {
 
                     <div class="h-6 w-px bg-[#dde8e3]"></div>
 
-                    <img
-                        src="https://ppb.unisayogya.ac.id/wp-content/uploads/2017/08/cropped-logo-unisa-crop.png"
-                        alt="Logo UNISA"
-                        class="h-8 w-auto object-contain"
-                    />
+                    <div class="relative">
+                        <button
+                            type="button"
+                            class="flex items-center gap-2 rounded-lg p-1 hover:bg-[#eaf2ee] transition-colors"
+                            aria-label="Buka menu profil"
+                            :aria-expanded="profileOpen"
+                            @click="profileOpen = !profileOpen"
+                        >
+                            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-[#4a7c6b] text-xs font-bold text-white">{{ profileInitial }}</span>
+                            <svg class="hidden h-4 w-4 text-[#4a7c6b] sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+
+                        <div
+                            v-if="profileOpen"
+                            class="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-xl border border-[#dde8e3] bg-white shadow-xl"
+                        >
+                            <div class="border-b border-[#e7efeb] p-4">
+                                <p class="truncate text-sm font-semibold text-[#1e3329]">{{ profileName }}</p>
+                                <p class="mt-0.5 truncate text-xs text-[#7aab95]">{{ auth.user?.username }}</p>
+                                <span class="mt-2 inline-flex rounded-full bg-[#eaf2ee] px-2.5 py-1 text-xs font-medium text-[#365f51]">{{ roleLabel }}</span>
+                            </div>
+                            <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm text-red-600 hover:bg-red-50" @click="profileOpen = false; logoutModalOpen = true">
+                                Keluar dari akun
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -387,5 +517,41 @@ const activeNavLabel = computed(() => {
                 <slot />
             </main>
         </div>
+
+        <!-- Profile detail -->
+        <div v-if="profileOpen" class="fixed inset-0 z-20" @click="profileOpen = false"></div>
+
+        <!-- Logout confirmation -->
+        <Transition name="fade">
+            <div
+                v-if="logoutModalOpen"
+                class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="logout-title"
+                @click.self="!loggingOut && (logoutModalOpen = false)"
+            >
+                <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                    </div>
+                    <h2 id="logout-title" class="text-lg font-semibold text-slate-900">Konfirmasi logout</h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-500">Apakah Anda yakin ingin keluar dari akun ini?</p>
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button type="button" :disabled="loggingOut" class="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50" @click="logoutModalOpen = false">Batal</button>
+                        <button type="button" :disabled="loggingOut" class="min-w-24 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-wait disabled:opacity-60" @click="logout">
+                            {{ loggingOut ? "Memproses..." : "Ya, logout" }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
     </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+</style>
